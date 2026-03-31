@@ -196,10 +196,12 @@ Material Types Supported:
 ```
 PORT=5000
 NODE_ENV=development
-MONGODB_URI=mongodb+srv://sahoops2003_db_user:EctoZrYHXL6rKqu2@cluster1.lulus7d.mongodb.net/sustainable_commerce
-JWT_SECRET=nptel_hub_super_secret_jwt_key_2024_change_in_production
+MONGODB_URI=mongodb+srv://your_username:your_password@your_cluster.mongodb.net/your_database
+JWT_SECRET=your_super_secret_jwt_key_change_in_production
 FRONTEND_URL=http://localhost:3000
 ```
+
+**Note**: See `server/.env.example` for all available configuration options. Copy it to create your `.env` file and add your actual credentials.
 
 ### Frontend (.env.local)
 ```

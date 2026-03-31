@@ -251,14 +251,23 @@ const scrapeNPTELAnnouncements = async (courseCode) => {
         const href = normalizeHref(block$(anchor).attr('href'));
         if (!href) return;
         const isDrive = href.includes('drive.google');
+        const isCloudStorage = href.includes('storage.googleapis.com');
+        const isAppEngine = href.includes('appspot.com');
         const isPdf = href.toLowerCase().includes('.pdf');
-        if (!isDrive && !isPdf) return;
+        // Accept Google Drive, Cloud Storage, AppEngine, or direct PDF links
+        if (!isDrive && !isCloudStorage && !isAppEngine && !isPdf) return;
         linksInBlock.push(href);
       });
 
       if (!linksInBlock.length) {
         const driveMatches = block.html.match(/https:\/\/drive\.google\.com[^\s"'<>]+/g) || [];
         linksInBlock.push(...driveMatches.map((l) => l.replace(/['">]+$/, '')));
+        
+        const storageMatches = block.html.match(/https:\/\/storage\.googleapis\.com[^\s"'<>]+/g) || [];
+        linksInBlock.push(...storageMatches.map((l) => l.replace(/['">]+$/, '')));
+        
+        const appspotMatches = block.html.match(/https:\/\/[^\s"'<>]*appspot\.com[^\s"'<>]+/g) || [];
+        linksInBlock.push(...appspotMatches.map((l) => l.replace(/['">]+$/, '')));
       }
 
       const assignmentInfo = parseAssignmentInfo(`${block.title} ${bodyText}`);
@@ -308,9 +317,20 @@ const scrapeNPTELAnnouncements = async (courseCode) => {
 };
 
 /**
- * Convert Google Drive shareable link to embedding/preview link
+ * Convert various external links to usable format
+ * - Google Drive shareable links to preview/download links
+ * - Google Cloud Storage URLs are returned as-is (already direct links)
+ * - AppEngine URLs are returned as-is (already direct links)
  */
 const convertDriveLink = (fileIdOrLink) => {
+  if (!fileIdOrLink) return fileIdOrLink;
+  
+  // Google Cloud Storage and AppEngine links are already direct - return as-is
+  if (fileIdOrLink.includes('storage.googleapis.com') || fileIdOrLink.includes('appspot.com')) {
+    return fileIdOrLink;
+  }
+  
+  // For Google Drive links, convert to preview format
   const fileId = fileIdOrLink?.includes('drive.google.com')
     ? extractDriveFileId(fileIdOrLink)
     : fileIdOrLink;

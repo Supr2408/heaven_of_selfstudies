@@ -55,7 +55,7 @@ async function extractMaterialsFromAnnouncements(annoncementPageUrl) {
 }
 
 /**
- * Check if a link is a valid material link (Google Drive, NPTEL, etc.)
+ * Check if a link is a valid material link (Google Drive, NPTEL, Google Cloud Storage, etc.)
  * @param {string} url - URL to check
  * @returns {boolean}
  */
@@ -63,6 +63,8 @@ function isValidMaterialLink(url) {
   const validDomains = [
     'drive.google.com',
     'docs.google.com',
+    'storage.googleapis.com',      // Google Cloud Storage (for external PDFs)
+    'appspot.com',                 // Google App Engine (swayam-node1-production.appspot.com)
     'nptel.ac.in',
     'onlinecourses.nptel.ac.in',
   ];
@@ -144,16 +146,30 @@ function determineFileType(url, linkText) {
  * @returns {string} Extracted title
  */
 function extractTitleFromUrl(url) {
+  // For Google Cloud Storage / AppEngine links, extract from path
+  if (url.includes('storage.googleapis.com') || url.includes('appspot.com')) {
+    const pathParts = url.split('/');
+    let fileName = pathParts[pathParts.length - 1];
+    // Decode URL-encoded characters (%2010 -> space, etc.)
+    fileName = decodeURIComponent(fileName);
+    // Remove common extensions from filename for cleaner title
+    return fileName.replace(/\.(pdf|zip|docx|xlsx|pptx)$/i, '') || 'Study Material';
+  }
+  
   // For Google Drive links
   if (url.includes('drive.google.com')) {
     return 'Google Drive Document';
   }
   
   // For other links, try to extract from URL params
-  const urlObj = new URL(url);
-  const titleParam = urlObj.searchParams.get('title') || urlObj.searchParams.get('name');
-  if (titleParam) {
-    return decodeURIComponent(titleParam);
+  try {
+    const urlObj = new URL(url);
+    const titleParam = urlObj.searchParams.get('title') || urlObj.searchParams.get('name');
+    if (titleParam) {
+      return decodeURIComponent(titleParam);
+    }
+  } catch (e) {
+    // Invalid URL format, just return generic title
   }
 
   return 'Study Material';
@@ -194,15 +210,21 @@ async function extractMaterialsForCourse(courseCode) {
 }
 
 /**
- * Convert Google Drive link to direct download link (if possible)
- * @param {string} driveLink - Google Drive sharing link
- * @returns {string} Converted link
+ * Convert various link types to downloadable URLs
+ * - Google Drive links to direct download
+ * - Google Cloud Storage links are already direct
+ * - AppEngine URLs are already direct
+ * @param {string} driveLink - Link to convert
+ * @returns {string} Converted/optimized link
  */
 function convertGoogleDriveLink(driveLink) {
-  // Convert share link to direct download
+  // For Google Cloud Storage and AppEngine links, return as-is (already direct links)
+  if (driveLink.includes('storage.googleapis.com') || driveLink.includes('appspot.com')) {
+    return driveLink;
+  }
+  
+  // Convert Google Drive share link to direct download
   // https://drive.google.com/file/d/FILE_ID/view?usp=sharing -> https://drive.google.com/uc?id=FILE_ID&export=download
-
-  const fileIdMatch = driveLink.match(/\/d\/([a-zA-Z0-9-_]+)\//);
   if (fileIdMatch) {
     const fileId = fileIdMatch[1];
     return `https://drive.google.com/uc?id=${fileId}&export=download`;

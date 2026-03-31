@@ -9,8 +9,10 @@ const mongoose = require('mongoose');
 
 // Middleware imports
 const { errorHandler } = require('./src/utils/errorHandler');
-const { generalLimiter } = require('./src/middleware/rateLimiter');
+const { generalLimiter, authLimiter, chatLimiter } = require('./src/middleware/advancedRateLimiter');
 const { initializeSocketIO } = require('./src/sockets/chat');
+const { initializeRedisAdapter } = require('./src/config/redisAdapter');
+const { createProductionIndexes } = require('./src/utils/mongoDbIndexes');
 
 // Route imports
 const authRoutes = require('./src/routes/authRoutes');
@@ -27,6 +29,11 @@ const io = new SocketIO(server, {
     methods: ['GET', 'POST'],
     credentials: true,
   },
+  transports: ['websocket', 'polling'],
+  reconnection: true,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+  reconnectionAttempts: 5,
 });
 
 // Middleware setup
@@ -37,17 +44,41 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use(cookieParser());
-app.use(generalLimiter);
+
+// Apply general rate limiter to all routes except health checks
+app.use((req, res, next) => {
+  if (req.path === '/api/health' || req.path === '/api/disclaimer') {
+    return next();
+  }
+  generalLimiter(req, res, next);
+});
 
 // Serve local Cloud Computing materials as static files
 app.use('/materials', express.static(path.join(__dirname, '../Cloud Computing')));
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('MongoDB connected'))
-  .catch((err) => console.error('MongoDB connection error:', err));
+// MongoDB connection with production features
+let dbConnected = false;
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/nptel')
+  .then(async () => {
+    console.log('✅ MongoDB connected');
+    dbConnected = true;
+    
+    // Create production indexes if in production mode
+    if (process.env.NODE_ENV === 'production') {
+      try {
+        await createProductionIndexes();
+        console.log('✅ Production indexes created');
+      } catch (err) {
+        console.error('⚠️  Error creating indexes:', err.message);
+      }
+    }
+  })
+  .catch((err) => {
+    console.error('❌ MongoDB connection error:', err);
+    dbConnected = false;
+  });
 
-// Routes
+// Routes (rate limiting applied at endpoint level within each route file)
 app.use('/api/auth', authRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/weeks', weekRoutes);
@@ -56,7 +87,13 @@ app.use('/api/assignments', assignmentRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.status(200).json({ success: true, message: 'Server is running' });
+  res.status(200).json({ 
+    success: true, 
+    message: 'Server is running',
+    timestamp: new Date().toISOString(),
+    database: dbConnected ? 'connected' : 'disconnected',
+    environment: process.env.NODE_ENV || 'development'
+  });
 });
 
 // Disclaimer endpoint
@@ -67,33 +104,72 @@ app.get('/api/disclaimer', (req, res) => {
   });
 });
 
+// Initialize Redis adapter for Socket.io (if available)
+initializeRedisAdapter(io).catch(err => {
+  console.warn('⚠️  Redis adapter initialization skipped:', err.message);
+  // Continue without Redis adapter - falls back to in-memory mode
+});
+
 // Socket.io connection
 io.on('connection', (socket) => {
-  console.log(`User connected: ${socket.id}`);
+  console.log(`🔌 User connected: ${socket.id}`);
 
-  // Initialize chat socket handlers
+  // Initialize chat socket handlers with rate limiting
   initializeSocketIO(io, socket);
 
   socket.on('disconnect', () => {
-    console.log(`User disconnected: ${socket.id}`);
+    console.log(`🔌 User disconnected: ${socket.id}`);
+  });
+
+  // Handle socket errors
+  socket.on('error', (error) => {
+    console.error(`⚠️  Socket error [${socket.id}]:`, error);
   });
 });
 
-// Error handling middleware
-app.use(errorHandler);
-
-// 404 handler
+// 404 handler (before error handler)
 app.use((req, res) => {
   res.status(404).json({
     success: false,
     message: 'Route not found',
+    path: req.path,
+  });
+});
+
+// Production-safe error handling middleware (MUST be last)
+app.use((err, req, res, next) => {
+  const isDevelopment = process.env.NODE_ENV !== 'production';
+  
+  console.error('❌ Error:', {
+    message: err.message,
+    status: err.status || 500,
+    path: req.path,
+    method: req.method,
+    stack: isDevelopment ? err.stack : undefined,
+  });
+
+  // Default error response
+  let statusCode = err.status || err.statusCode || 500;
+  let message = err.message || 'Internal Server Error';
+
+  // Prevent exposing internal error details in production
+  if (!isDevelopment && statusCode === 500) {
+    message = 'Internal Server Error';
+  }
+
+  res.status(statusCode).json({
+    success: false,
+    message,
+    ...(isDevelopment && { error: err.message, stack: err.stack }),
   });
 });
 
 // Start server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
 });
 
 // Handle unhandled promise rejections

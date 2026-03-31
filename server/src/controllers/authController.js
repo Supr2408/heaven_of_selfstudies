@@ -1,5 +1,5 @@
 const User = require('../models/User');
-const { generateToken, verifyToken } = require('../utils/jwt');
+const { generateToken, generateHttpOnlyCookie, verifyToken } = require('../utils/jwtSecure');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
 const { sanitizeInput } = require('../utils/validation');
 const { AppError, catchAsync } = require('../utils/errorHandler');
@@ -62,13 +62,9 @@ exports.register = catchAsync(async (req, res, next) => {
     // Generate JWT
     const token = generateToken(user._id);
 
-    // Set cookie
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    // Get secure HttpOnly cookie options
+    const { value: cookieValue, options: cookieOptions } = generateHttpOnlyCookie(token);
+    res.cookie('token', cookieValue, cookieOptions);
 
     console.log('✅ Registration complete, token generated');
 
@@ -76,7 +72,6 @@ exports.register = catchAsync(async (req, res, next) => {
       success: true,
       message: 'User registered successfully. Please verify your email.',
       user: user.toJSON(),
-      token,
     });
   } catch (dbError) {
     console.error('💥 Database Error:', dbError.message);
@@ -112,19 +107,14 @@ exports.login = catchAsync(async (req, res, next) => {
   // Generate JWT
   const token = generateToken(user._id);
 
-  // Set cookie
-  res.cookie('token', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+  // Get secure HttpOnly cookie options
+  const { value: cookieValue, options: cookieOptions } = generateHttpOnlyCookie(token);
+  res.cookie('token', cookieValue, cookieOptions);
 
   res.status(200).json({
     success: true,
     message: 'Logged in successfully',
     user: user.toJSON(),
-    token,
   });
 });
 
@@ -222,17 +212,13 @@ exports.resetPassword = catchAsync(async (req, res, next) => {
   // Generate new JWT
   const jwtToken = generateToken(user._id);
 
-  res.cookie('token', jwtToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+  // Get secure HttpOnly cookie options
+  const { value: cookieValue, options: cookieOptions } = generateHttpOnlyCookie(jwtToken);
+  res.cookie('token', cookieValue, cookieOptions);
 
   res.status(200).json({
     success: true,
     message: 'Password reset successfully',
-    token: jwtToken,
   });
 });
 
@@ -240,7 +226,12 @@ exports.resetPassword = catchAsync(async (req, res, next) => {
  * Logout user
  */
 exports.logout = (req, res) => {
-  res.clearCookie('token');
+  // Clear token cookie with same secure options
+  res.clearCookie('token', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+  });
   res.status(200).json({
     success: true,
     message: 'Logged out successfully',

@@ -3,6 +3,59 @@ const User = require('../models/User');
 const Week = require('../models/Week');
 const { sanitizeMarkdown } = require('../utils/validation');
 
+// Track user sessions per socket for cleanup
+const socketUserSessions = new Map();
+
+/**
+ * Helper: Validate room naming format {courseId}_{year}_{weekNumber}
+ */
+function validateRoomFormat(roomId) {
+  const roomRegex = /^[a-zA-Z0-9]+_\d{4}_\d+$/;
+  return roomRegex.test(roomId);
+}
+
+/**
+ * Helper: Cleanup user from all rooms on disconnect
+ */
+function cleanupUserSession(socket) {
+  if (socketUserSessions.has(socket.id)) {
+    const userSession = socketUserSessions.get(socket.id);
+    socket.leave(userSession.roomId);
+    socketUserSessions.delete(socket.id);
+    console.log(`✅ Cleaned up session for socket ${socket.id}`);
+  }
+}
+
+/**
+ * Rate limiter for messages per user per room
+ * Limits: 10 messages per minute per room
+ */
+const messageRateLimiter = new Map();
+
+function checkMessageRateLimit(userId, roomId) {
+  const key = `${userId}:${roomId}`;
+  const now = Date.now();
+  const windowMs = 60 * 1000; // 1 minute
+  const maxMessages = 10;
+
+  if (!messageRateLimiter.has(key)) {
+    messageRateLimiter.set(key, []);
+  }
+
+  const timestamps = messageRateLimiter.get(key);
+  
+  // Remove old timestamps outside the window
+  const validTimestamps = timestamps.filter(ts => now - ts < windowMs);
+  messageRateLimiter.set(key, validTimestamps);
+
+  if (validTimestamps.length >= maxMessages) {
+    return false; // Rate limit exceeded
+  }
+
+  validTimestamps.push(now);
+  return true; // Allow message
+}
+
 /**
  * Socket.io handlers for real-time chat
  * Room format: courseId_year_weekNumber
@@ -20,18 +73,33 @@ const initializeSocketIO = (io, socket) => {
         return;
       }
 
+      // Validate room naming format
+      if (!validateRoomFormat(roomId)) {
+        socket.emit('error', { message: 'Invalid room format' });
+        return;
+      }
+
+      // Cleanup previous room session if exists
+      cleanupUserSession(socket);
+
       // Join Socket.io room
       socket.join(roomId);
+      
+      // Store session info
       socket.userData = { roomId, userId, weekId };
+      socketUserSessions.set(socket.id, { roomId, userId, weekId, joinedAt: new Date() });
+
+      console.log(`✅ User ${userId} joined room ${roomId} (socket: ${socket.id})`);
 
       // Notify others that user joined
       io.to(roomId).emit('user-joined', {
         message: `${socket.handshake.auth.userName || 'User'} joined the chat`,
         timestamp: new Date(),
+        userId,
       });
 
-      // Load message history (last 50 messages)
-      const messages = await Message.find({ weekId })
+      // Load message history (last 50 messages for this week only)
+      const messages = await Message.find({ weekId, isDeleted: false })
         .sort({ timestamp: -1 })
         .limit(50)
         .populate('userId', 'name avatar')
@@ -58,8 +126,23 @@ const initializeSocketIO = (io, socket) => {
         return;
       }
 
+      // Apply rate limiting (10 messages per minute per room)
+      if (!checkMessageRateLimit(userId, roomId)) {
+        socket.emit('error', { 
+          message: 'Message rate limit exceeded. Max 10 messages per minute per room.',
+          code: 'RATE_LIMIT_EXCEEDED'
+        });
+        return;
+      }
+
       // Sanitize content
       const sanitizedContent = sanitizeMarkdown(content);
+
+      // Validate content length
+      if (sanitizedContent.length > 5000) {
+        socket.emit('error', { message: 'Message too long (max 5000 characters)' });
+        return;
+      }
 
       // Create message
       const newMessage = new Message({
@@ -77,7 +160,7 @@ const initializeSocketIO = (io, socket) => {
         await newMessage.populate('repliedTo', 'content userId');
       }
 
-      // Broadcast to room
+      // Broadcast to room (week-isolated)
       io.to(roomId).emit('new-message', {
         _id: newMessage._id,
         userId: newMessage.userId,
@@ -257,25 +340,32 @@ const initializeSocketIO = (io, socket) => {
    */
   socket.on('leave-room', () => {
     if (socket.userData) {
+      console.log(`👋 User ${socket.userData.userId} leaving room ${socket.userData.roomId}`);
       io.to(socket.userData.roomId).emit('user-left', {
         message: 'User left the chat',
         timestamp: new Date(),
+        userId: socket.userData.userId,
       });
-      socket.leave(socket.userData.roomId);
+      cleanupUserSession(socket);
     }
   });
 
   /**
-   * Disconnect handler
+   * Disconnect handler - automatic cleanup
    */
   socket.on('disconnect', () => {
     if (socket.userData) {
+      console.log(`🔌 User ${socket.userData.userId} disconnected from room ${socket.userData.roomId}`);
       io.to(socket.userData.roomId).emit('user-disconnected', {
         message: 'User disconnected',
         timestamp: new Date(),
+        userId: socket.userData.userId,
       });
     }
+    cleanupUserSession(socket);
   });
 };
+
+module.exports = { initializeSocketIO };
 
 module.exports = { initializeSocketIO };

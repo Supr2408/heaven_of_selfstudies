@@ -11,7 +11,7 @@ const {
   changePassword,
 } = require('../controllers/authController');
 const { protectRoute } = require('../middleware/auth');
-const { authLimiter } = require('../middleware/rateLimiter');
+const { authLimiter } = require('../middleware/advancedRateLimiter');
 
 const router = express.Router();
 

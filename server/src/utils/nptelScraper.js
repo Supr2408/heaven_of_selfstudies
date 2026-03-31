@@ -1,6 +1,71 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 
+// Configuration for retry logic
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  initialDelay: 1000, // 1 second
+  maxDelay: 8000, // 8 seconds
+  backoffMultiplier: 2,
+};
+
+// Proxies for rotation (optional, can be configured via .env)
+const PROXIES = (process.env.NPTEL_PROXY || '').split(',').filter(p => p.trim());
+
+let proxyIndex = 0;
+
+/**
+ * Get next proxy in rotation
+ */
+function getNextProxy() {
+  if (!PROXIES.length) return null;
+  const proxy = PROXIES[proxyIndex % PROXIES.length];
+  proxyIndex++;
+  return proxy;
+}
+
+/**
+ * Fetch URL with exponential backoff retry logic
+ */
+const fetchWithRetry = async (url, options = {}, retries = RETRY_CONFIG.maxRetries) => {
+  try {
+    const config = {
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      },
+      ...options,
+    };
+
+    // Add proxy if available
+    const proxy = getNextProxy();
+    if (proxy) {
+      config.httpAgent = new (require('http').Agent)({ proxy });
+      config.httpsAgent = new (require('https').Agent)({ proxy });
+    }
+
+    console.log(`🔍 Fetching: ${url}${proxy ? ` (proxy: ${proxy})` : ''}`);
+    const response = await axios.get(url, config);
+    return response;
+  } catch (error) {
+    if (retries > 0) {
+      // Calculate exponential backoff delay
+      const delayMs = Math.min(
+        RETRY_CONFIG.initialDelay * Math.pow(RETRY_CONFIG.backoffMultiplier, RETRY_CONFIG.maxRetries - retries),
+        RETRY_CONFIG.maxDelay
+      );
+      
+      console.warn(`⚠️ Fetch failed (${error.message}). Retrying in ${delayMs}ms... (${retries} retries remaining)`);
+      
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      return fetchWithRetry(url, options, retries - 1);
+    }
+    
+    console.error(`❌ All fetch retries exhausted for ${url}:`, error.message);
+    throw error;
+  }
+};
+
 // Week/assignment patterns reused across extractors
 const WEEK_PATTERNS = [
   /week\s*0*(\d{1,2})/gi,
@@ -120,14 +185,9 @@ const scrapeNPTELAnnouncements = async (courseCode) => {
   try {
     const url = `https://onlinecourses.nptel.ac.in/${courseCode}/announcements`;
 
-    console.log(`🔍 Fetching NPTEL course code: ${courseCode}`);
-    const { data } = await axios.get(url, {
-      timeout: 10000,
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-    });
+    console.log(`🔍 Scraping NPTEL course: ${courseCode}`);
+    const response = await fetchWithRetry(url);
+    const data = response.data;
 
     const $ = cheerio.load(data);
     const solutions = [];

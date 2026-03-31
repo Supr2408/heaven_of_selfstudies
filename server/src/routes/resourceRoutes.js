@@ -12,7 +12,7 @@ const {
   getTrendingResources,
 } = require('../controllers/resourceController');
 const { protectRoute } = require('../middleware/auth');
-const { uploadLimiter } = require('../middleware/rateLimiter');
+const { uploadLimiter, apiLimiter } = require('../middleware/advancedRateLimiter');
 
 const router = express.Router();
 

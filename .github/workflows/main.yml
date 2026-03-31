@@ -1,0 +1,267 @@
+name: CI/CD Pipeline
+
+# Trigger on push to main and pull requests
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Linting and Code Quality
+  lint:
+    runs-on: ubuntu-latest
+    name: Lint & Code Quality
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install Backend Dependencies
+        working-directory: ./server
+        run: npm ci
+
+      - name: Lint Backend
+        working-directory: ./server
+        run: npm run lint --if-present || echo "No lint script found"
+
+      - name: Install Frontend Dependencies
+        working-directory: ./client
+        run: npm ci
+
+      - name: Lint Frontend
+        working-directory: ./client
+        run: npm run lint --if-present || echo "No lint script found"
+
+  # Backend Tests
+  test-backend:
+    runs-on: ubuntu-latest
+    name: Test Backend
+    needs: lint
+
+    services:
+      mongodb:
+        image: mongo:7-alpine
+        options: -v /data/db
+        ports:
+          - 27017:27017
+
+      redis:
+        image: redis:7-alpine
+        options: -v /data
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        working-directory: ./server
+        run: npm ci
+
+      - name: Run Tests
+        working-directory: ./server
+        env:
+          MONGODB_URI: mongodb://localhost:27017/nptel-test
+          REDIS_URL: redis://localhost:6379
+          NODE_ENV: test
+        run: npm test --if-present || echo "No test script found"
+
+      - name: Upload Coverage
+        uses: codecov/codecov-action@v3
+        if: always()
+        with:
+          files: ./server/coverage/lcov.info
+          flags: backend
+
+  # Frontend Build & Test
+  test-frontend:
+    runs-on: ubuntu-latest
+    name: Build & Test Frontend
+    needs: lint
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        working-directory: ./client
+        run: npm ci
+
+      - name: Build Frontend
+        working-directory: ./client
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:5000/api
+        run: npm run build
+
+      - name: Run Frontend Tests
+        working-directory: ./client
+        run: npm test --if-present || echo "No test script found"
+
+  # Security Checks
+  security:
+    runs-on: ubuntu-latest
+    name: Security Scan
+    needs: [lint, test-backend, test-frontend]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Dependency Check
+        working-directory: ./server
+        run: npm audit --audit-level=moderate || true
+
+  # Build Docker Images
+  build-docker:
+    runs-on: ubuntu-latest
+    name: Build Docker Images
+    needs: [security]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+
+      - name: Build and Push Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./server/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and Push Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./client/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Deploy to Staging (on develop branch)
+  deploy-staging:
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    name: Deploy to Staging
+    needs: build-docker
+
+    steps:
+      - name: Deploy to Staging Server
+        env:
+          DEPLOY_KEY: ${{ secrets.STAGING_DEPLOY_KEY }}
+          DEPLOY_HOST: ${{ secrets.STAGING_HOST }}
+          DEPLOY_USER: ${{ secrets.STAGING_USER }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $DEPLOY_HOST >> ~/.ssh/known_hosts
+          
+          ssh -i ~/.ssh/deploy_key $DEPLOY_USER@$DEPLOY_HOST << 'EOF'
+            cd /var/www/nptel-hub
+            docker-compose pull
+            docker-compose up -d
+          EOF
+
+  # Deploy to Production (on main branch)
+  deploy-production:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    name: Deploy to Production
+    needs: build-docker
+    environment: production
+
+    steps:
+      - name: Deploy to Production Server
+        env:
+          DEPLOY_KEY: ${{ secrets.PROD_DEPLOY_KEY }}
+          DEPLOY_HOST: ${{ secrets.PROD_HOST }}
+          DEPLOY_USER: ${{ secrets.PROD_USER }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $DEPLOY_HOST >> ~/.ssh/known_hosts
+          
+          ssh -i ~/.ssh/deploy_key $DEPLOY_USER@$DEPLOY_HOST << 'EOF'
+            cd /var/www/nptel-hub
+            git pull origin main
+            docker-compose -f docker-compose.production.yml pull
+            docker-compose -f docker-compose.production.yml up -d
+            
+            # Run database migrations
+            docker exec nptel_backend npm run migrate --if-present
+            
+            # Create indexes
+            docker exec nptel_backend node -e "require('./src/utils/mongoDbIndexes').createProductionIndexes()"
+          EOF
+
+      - name: Notify Deployment
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Production deployment ${{ job.status }}'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}

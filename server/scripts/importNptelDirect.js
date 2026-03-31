@@ -123,15 +123,42 @@ const run = async () => {
   for (const weekPayload of imported.weeks) {
     const existing = await Week.findOne({ yearInstanceId: yearInstance._id, weekNumber: weekPayload.weekNumber });
     if (existing) {
-      const hasNewMaterials = (weekPayload.materials || []).length > 0;
-      const existingEmpty = !existing.materials || existing.materials.length === 0;
-      if (hasNewMaterials && existingEmpty) {
+      // Merge new materials with existing ones, deduplicating by URL
+      const existingUrls = new Set(
+        (existing.materials || []).map(m => m.url).filter(Boolean)
+      );
+      const newMaterials = (weekPayload.materials || []).filter(
+        m => m.url && !existingUrls.has(m.url)
+      );
+      
+      const merged = [...(existing.materials || []), ...newMaterials];
+      
+      // Update week if there are new materials or metadata improvements
+      let didUpdate = newMaterials.length > 0;
+      
+      // Update title if current is generic or empty
+      const currentTitleIsGeneric = !existing.title || existing.title.includes('Week');
+      if (currentTitleIsGeneric && weekPayload.title && !weekPayload.title.includes('Week')) {
         existing.title = sanitizeInput(weekPayload.title);
-        existing.description = sanitizeInput(weekPayload.description || existing.description || '');
-        existing.topicsOverview = weekPayload.topicsOverview || existing.topicsOverview || [];
-        existing.materials = weekPayload.materials;
-        existing.pdfLinks = weekPayload.pdfLinks || existing.pdfLinks || [];
-        existing.pyqLinks = weekPayload.pyqLinks || existing.pyqLinks || [];
+        didUpdate = true;
+      }
+      
+      // Update description if current is empty
+      if (!existing.description && weekPayload.description) {
+        existing.description = sanitizeInput(weekPayload.description);
+        didUpdate = true;
+      }
+      
+      // Update topicsOverview if current is empty
+      if ((!existing.topicsOverview || existing.topicsOverview.length === 0) && weekPayload.topicsOverview?.length) {
+        existing.topicsOverview = weekPayload.topicsOverview;
+        didUpdate = true;
+      }
+      
+      if (didUpdate) {
+        existing.materials = merged;
+        existing.pdfLinks = [...new Set([...(existing.pdfLinks || []), ...(weekPayload.pdfLinks || [])])];
+        existing.pyqLinks = [...new Set([...(existing.pyqLinks || []), ...(weekPayload.pyqLinks || [])])];
         await existing.save();
         weeksUpdated += 1;
       }

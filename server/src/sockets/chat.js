@@ -1,0 +1,281 @@
+const Message = require('../models/Message');
+const User = require('../models/User');
+const Week = require('../models/Week');
+const { sanitizeMarkdown } = require('../utils/validation');
+
+/**
+ * Socket.io handlers for real-time chat
+ * Room format: courseId_year_weekNumber
+ */
+const initializeSocketIO = (io, socket) => {
+  /**
+   * Join chat room
+   */
+  socket.on('join-room', async (data) => {
+    try {
+      const { roomId, weekId, userId } = data;
+
+      if (!roomId || !userId) {
+        socket.emit('error', { message: 'Invalid room or user data' });
+        return;
+      }
+
+      // Join Socket.io room
+      socket.join(roomId);
+      socket.userData = { roomId, userId, weekId };
+
+      // Notify others that user joined
+      io.to(roomId).emit('user-joined', {
+        message: `${socket.handshake.auth.userName || 'User'} joined the chat`,
+        timestamp: new Date(),
+      });
+
+      // Load message history (last 50 messages)
+      const messages = await Message.find({ weekId })
+        .sort({ timestamp: -1 })
+        .limit(50)
+        .populate('userId', 'name avatar')
+        .populate('repliedTo', 'content userId')
+        .lean();
+
+      socket.emit('message-history', messages.reverse());
+    } catch (error) {
+      console.error('Error joining room:', error);
+      socket.emit('error', { message: 'Failed to join room' });
+    }
+  });
+
+  /**
+   * Send message
+   */
+  socket.on('send-message', async (data) => {
+    try {
+      const { content, repliedTo } = data;
+      const { userId, weekId, roomId } = socket.userData;
+
+      if (!content || !userId || !weekId) {
+        socket.emit('error', { message: 'Invalid message data' });
+        return;
+      }
+
+      // Sanitize content
+      const sanitizedContent = sanitizeMarkdown(content);
+
+      // Create message
+      const newMessage = new Message({
+        weekId,
+        userId,
+        content: sanitizedContent,
+        repliedTo: repliedTo || null,
+      });
+
+      await newMessage.save();
+
+      // Populate user info
+      await newMessage.populate('userId', 'name avatar');
+      if (newMessage.repliedTo) {
+        await newMessage.populate('repliedTo', 'content userId');
+      }
+
+      // Broadcast to room
+      io.to(roomId).emit('new-message', {
+        _id: newMessage._id,
+        userId: newMessage.userId,
+        content: newMessage.content,
+        repliedTo: newMessage.repliedTo,
+        timestamp: newMessage.timestamp,
+      });
+    } catch (error) {
+      console.error('Error sending message:', error);
+      socket.emit('error', { message: 'Failed to send message' });
+    }
+  });
+
+  /**
+   * Edit message
+   */
+  socket.on('edit-message', async (data) => {
+    try {
+      const { messageId, content } = data;
+      const { userId } = socket.userData;
+
+      const message = await Message.findById(messageId);
+      if (!message) {
+        socket.emit('error', { message: 'Message not found' });
+        return;
+      }
+
+      // Only allow user to edit their own messages
+      if (message.userId.toString() !== userId) {
+        socket.emit('error', { message: 'Unauthorized to edit this message' });
+        return;
+      }
+
+      message.content = sanitizeMarkdown(content);
+      message.isEdited = true;
+      message.editedAt = new Date();
+      await message.save();
+
+      io.to(socket.userData.roomId).emit('message-edited', {
+        messageId,
+        content: message.content,
+        editedAt: message.editedAt,
+      });
+    } catch (error) {
+      console.error('Error editing message:', error);
+      socket.emit('error', { message: 'Failed to edit message' });
+    }
+  });
+
+  /**
+   * Delete message (soft delete)
+   */
+  socket.on('delete-message', async (data) => {
+    try {
+      const { messageId } = data;
+      const { userId } = socket.userData;
+
+      const message = await Message.findById(messageId);
+      if (!message) {
+        socket.emit('error', { message: 'Message not found' });
+        return;
+      }
+
+      // Check permissions (owner or moderator/admin)
+      const user = await User.findById(userId);
+      if (
+        message.userId.toString() !== userId &&
+        !['moderator', 'admin'].includes(user.role)
+      ) {
+        socket.emit('error', { message: 'Unauthorized to delete this message' });
+        return;
+      }
+
+      message.isDeleted = true;
+      message.deletedAt = new Date();
+      await message.save();
+
+      io.to(socket.userData.roomId).emit('message-deleted', {
+        messageId,
+      });
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      socket.emit('error', { message: 'Failed to delete message' });
+    }
+  });
+
+  /**
+   * Add reaction to message
+   */
+  socket.on('add-reaction', async (data) => {
+    try {
+      const { messageId, emoji } = data;
+      const { userId, roomId } = socket.userData;
+
+      const message = await Message.findById(messageId);
+      if (!message) {
+        socket.emit('error', { message: 'Message not found' });
+        return;
+      }
+
+      if (!message.reactions) {
+        message.reactions = new Map();
+      }
+
+      if (!message.reactions[emoji]) {
+        message.reactions[emoji] = [];
+      }
+
+      if (!message.reactions[emoji].includes(userId)) {
+        message.reactions[emoji].push(userId);
+      }
+
+      await message.save();
+
+      io.to(roomId).emit('reaction-added', {
+        messageId,
+        emoji,
+        reactions: Object.fromEntries(message.reactions),
+      });
+    } catch (error) {
+      console.error('Error adding reaction:', error);
+      socket.emit('error', { message: 'Failed to add reaction' });
+    }
+  });
+
+  /**
+   * Report message
+   */
+  socket.on('report-message', async (data) => {
+    try {
+      const { messageId, reason } = data;
+      const { userId } = socket.userData;
+
+      const message = await Message.findById(messageId);
+      if (!message) {
+        socket.emit('error', { message: 'Message not found' });
+        return;
+      }
+
+      message.reports.push({
+        userId,
+        reason,
+        reportedAt: new Date(),
+      });
+
+      await message.save();
+
+      socket.emit('message', {
+        type: 'success',
+        text: 'Message reported successfully',
+      });
+    } catch (error) {
+      console.error('Error reporting message:', error);
+      socket.emit('error', { message: 'Failed to report message' });
+    }
+  });
+
+  /**
+   * Typing indicator
+   */
+  socket.on('typing', (data) => {
+    const { userName } = data;
+    socket.to(socket.userData.roomId).emit('user-typing', {
+      userName: userName || 'Someone',
+    });
+  });
+
+  /**
+   * Stop typing
+   */
+  socket.on('stop-typing', () => {
+    socket.to(socket.userData.roomId).emit('user-stop-typing', {});
+  });
+
+  /**
+   * Leave room
+   */
+  socket.on('leave-room', () => {
+    if (socket.userData) {
+      io.to(socket.userData.roomId).emit('user-left', {
+        message: 'User left the chat',
+        timestamp: new Date(),
+      });
+      socket.leave(socket.userData.roomId);
+    }
+  });
+
+  /**
+   * Disconnect handler
+   */
+  socket.on('disconnect', () => {
+    if (socket.userData) {
+      io.to(socket.userData.roomId).emit('user-disconnected', {
+        message: 'User disconnected',
+        timestamp: new Date(),
+      });
+    }
+  });
+};
+
+module.exports = { initializeSocketIO };

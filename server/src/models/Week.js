@@ -11,7 +11,6 @@ const weekSchema = new mongoose.Schema(
       type: Number,
       required: [true, 'Please provide week number'],
       min: 1,
-      max: 24,
     },
     title: {
       type: String,

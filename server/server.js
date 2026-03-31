@@ -53,8 +53,8 @@ app.use((req, res, next) => {
   generalLimiter(req, res, next);
 });
 
-// Serve local Cloud Computing materials as static files
-app.use('/materials', express.static(path.join(__dirname, '../Cloud Computing')));
+// Static materials endpoint disabled - Cloud Computing folder removed
+// app.use('/materials', express.static(path.join(__dirname, '../Cloud Computing')));
 
 // MongoDB connection with production features
 let dbConnected = false;

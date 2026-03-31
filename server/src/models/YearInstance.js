@@ -33,7 +33,6 @@ const yearInstanceSchema = new mongoose.Schema(
       type: Number,
       default: 12,
       min: 1,
-      max: 24,
     },
     syllabus: {
       type: String,

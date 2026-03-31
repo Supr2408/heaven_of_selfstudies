@@ -118,55 +118,6 @@ export default function Sidebar() {
     return data;
   };
 
-  // Auto-initialize Cloud Computing hierarchy for quick access
-  useEffect(() => {
-    if (initialized || !subjects.length) return;
-
-    const defaultSubject =
-      subjects.find((subject) => subject.slug === 'cloud-computing') || subjects[0];
-
-    if (!defaultSubject) return;
-
-    const bootstrap = async () => {
-      try {
-        setLoading(true);
-        setSelectedSubject(defaultSubject);
-        const subjectCourses = await loadCoursesForSubject(defaultSubject._id);
-        setExpandedSubject(defaultSubject._id);
-        setError(null);
-
-        if (!subjectCourses.length) return;
-        const defaultCourse = subjectCourses[0];
-        setSelectedCourse(defaultCourse);
-        const courseInstances = await loadInstancesForCourse(defaultCourse._id);
-        setExpandedCourse(defaultCourse._id);
-
-        if (!courseInstances.length) return;
-        const defaultInstance = courseInstances[0];
-        setSelectedYear(defaultInstance);
-        await loadWeeksForInstance(defaultInstance._id);
-        setExpandedYearInstance(defaultInstance._id);
-
-        const firstMonth = getSemesterMonths(defaultInstance.semester)[0];
-        if (firstMonth) {
-          setExpandedMonths((prev) => ({
-            ...prev,
-            [`${defaultInstance._id}-${firstMonth}`]: true,
-          }));
-        }
-      } catch (err) {
-        console.error('Failed to initialize cloud computing hierarchy:', err);
-      } finally {
-        setInitialized(true);
-        setLoading(false);
-      }
-    };
-
-    bootstrap();
-    // `subjects` controls when bootstrap can run; setters come from Zustand and are stable
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subjects, initialized]);
-
   // Interaction handlers ---------------------------------------------------
   const handleSubjectClick = async (subject) => {
     if (expandedSubject === subject._id) {

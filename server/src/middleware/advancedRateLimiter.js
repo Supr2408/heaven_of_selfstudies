@@ -13,6 +13,8 @@ const generalLimiter = rateLimit({
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
   skip: (req) => {
+    // Skip rate limiting in development mode
+    if (process.env.NODE_ENV === 'development') return true;
     // Skip rate limiting for health checks
     return req.path === '/api/health';
   },
@@ -31,6 +33,7 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true, // Don't count successful requests
+  skip: (req) => process.env.NODE_ENV === 'development', // Skip in dev
 });
 
 // Chat/Messages rate limiter
@@ -42,6 +45,7 @@ const chatLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.userId || req.ip,
+  skip: (req) => process.env.NODE_ENV === 'development', // Skip in dev
 });
 
 // Resource upload rate limiter
@@ -53,6 +57,7 @@ const uploadLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.userId || req.ip,
+  skip: (req) => process.env.NODE_ENV === 'development', // Skip in dev
 });
 
 // API endpoint rate limiter for computationally expensive operations
@@ -64,6 +69,7 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.userId || req.ip,
+  skip: (req) => process.env.NODE_ENV === 'development', // Skip in dev
 });
 
 // Search rate limiter - prevent search bombing
@@ -75,6 +81,7 @@ const searchLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.userId || req.ip,
+  skip: (req) => process.env.NODE_ENV === 'development', // Skip in dev
 });
 
 module.exports = {

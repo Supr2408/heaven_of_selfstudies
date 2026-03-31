@@ -12,7 +12,7 @@ const assignmentSchema = new mongoose.Schema(
     courseName: {
       type: String,
       required: true,
-      // Examples: Data Mining, Cloud Computing, Web Dev
+      // Examples: Data Mining, Machine Learning, Web Development
     },
     semester: {
       type: String,

@@ -96,7 +96,7 @@ export default function Dashboard() {
               <p className="mt-1 text-sm text-slate-600">
                 Use the dedicated search page to find a course, inspect its statistics runs,
                 derive the announcement course code automatically, and import it into the same
-                branch structure as Cloud Computing.
+                course hierarchy. Each subject can have multiple courses, and each course
               </p>
             </div>
             <Link

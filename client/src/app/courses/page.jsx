@@ -163,10 +163,9 @@ export default function CoursesPage() {
               Search any NPTEL course and bring its assignment solutions into the Hub
             </h1>
             <p className="text-lg text-slate-600">
-              This page follows the same flow you described manually: search the course,
-              inspect its statistics runs, derive the run IDs, scrape announcement solutions,
-              and create the same subject, batch, week, and solution-branch structure used by the
-              existing Cloud Computing section.
+              This page follows the NPTEL course workflow: search for a course,
+              inspect course runs, derive run IDs, scrape materials from announcements,
+              and create subject and course structures organized by years and weeks.
             </p>
           </div>
 
@@ -181,7 +180,7 @@ export default function CoursesPage() {
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   onKeyDown={(event) => event.key === 'Enter' && handleSearch()}
-                  placeholder="Natural Language Processing, Data Mining, Cloud Computing..."
+                  placeholder="Natural Language Processing, Data Mining, Machine Learning..."
                   className="w-full border-0 bg-transparent p-0 text-slate-900 outline-none placeholder:text-slate-400"
                 />
               </div>
@@ -344,7 +343,7 @@ export default function CoursesPage() {
                     </div>
                     <p className="mt-1 text-sm text-slate-600">
                       Importing will create the subject, course, batch history, weeks, and
-                      assignment-solution branches so it appears in the same hierarchy as Cloud Computing.
+                      assignment-solution structure across different course runs and years.
                     </p>
                     <button
                       onClick={handleImport}

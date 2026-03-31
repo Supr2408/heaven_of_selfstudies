@@ -51,7 +51,7 @@ export default function AssignmentExtractor() {
           </p>
           <div className="text-sm text-slate-600 space-y-1">
             <p>• <code className="bg-slate-100 px-1">noc26_cs58</code> = Data Mining (Jan-Apr 2026)</p>
-            <p>• <code className="bg-slate-100 px-1">noc25_cs107</code> = Cloud Computing (Jul-Oct 2025)</p>
+            <p>• <code className="bg-slate-100 px-1">noc25_cs102</code> = Machine Learning (Jul-Oct 2025)</p>
             <p>• <code className="bg-slate-100 px-1">noc24_cs118</code> = Web Development (Jul-Oct 2024)</p>
           </div>
         </div>

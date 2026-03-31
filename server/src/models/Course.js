@@ -42,7 +42,6 @@ const courseSchema = new mongoose.Schema(
     credits: {
       type: Number,
       min: 1,
-      max: 4,
     },
     createdAt: {
       type: Date,

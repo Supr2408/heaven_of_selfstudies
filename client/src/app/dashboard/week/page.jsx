@@ -188,7 +188,7 @@ export default function WeekPage() {
             <h2 className="text-2xl font-bold text-slate-900 mb-4">Real-time Chat</h2>
             <ChatRoom
               weekId={week._id}
-              courseId={courseIdForChat || 'cloud-computing'}
+              courseId={courseIdForChat || week?.yearInstanceId?.courseId?._id || ''}
               year={courseYearForChat || new Date().getFullYear()}
             />
           </div>

@@ -346,7 +346,15 @@ const getNptelCoursePreview = async ({
   }
 
   const page = await fetchCoursePage(resolvedCourse.courseUrl, resolvedCourse.title);
-  const runs = await fetchCourseStats(resolvedCourse.courseNumericId);
+  let runs = await fetchCourseStats(resolvedCourse.courseNumericId);
+
+  // Filter to only include years between 2020 and 2025
+  const MIN_YEAR = 2020;
+  const MAX_YEAR = 2025;
+  runs = runs.filter((run) => {
+    const year = parseYearFromTimeline(run.timeline || '');
+    return year >= MIN_YEAR && year <= MAX_YEAR;
+  });
 
   return {
     courseNumericId: resolvedCourse.courseNumericId,
@@ -486,7 +494,20 @@ const importNptelCourse = async ({
   })();
 
   const runsData = [];
-  const runsList = runs.length ? runs : [{ timeline: '', courseId: courseCodeNormalized }];
+  let runsList = runs.length ? runs : [{ timeline: '', courseId: courseCodeNormalized }];
+
+  // Filter to only include years between 2020 and 2025 to avoid infinite loading
+  const MIN_YEAR = 2020;
+  const MAX_YEAR = 2025;
+  runsList = runsList.filter((run) => {
+    const year = parseYearFromTimeline(run.timeline || '') || yearFromCode || new Date().getFullYear();
+    return year >= MIN_YEAR && year <= MAX_YEAR;
+  });
+
+  // If no runs after filtering, add a default one
+  if (!runsList.length) {
+    runsList = [{ timeline: '', courseId: courseCodeNormalized }];
+  }
 
   for (const run of runsList) {
     const runCode = buildCourseCodeFromRun(run.courseId || courseCodeNormalized || '');

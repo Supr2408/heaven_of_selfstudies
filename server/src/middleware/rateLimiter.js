@@ -22,6 +22,7 @@ const authLimiter = rateLimit({
   skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => process.env.NODE_ENV === 'development', // Skip in dev
 });
 
 /**
@@ -33,6 +34,7 @@ const chatLimiter = rateLimit({
   message: 'Too many messages sent, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => process.env.NODE_ENV === 'development', // Skip in dev
 });
 
 /**
@@ -44,6 +46,7 @@ const uploadLimiter = rateLimit({
   message: 'Too many uploads, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => process.env.NODE_ENV === 'development', // Skip in dev
 });
 
 module.exports = {

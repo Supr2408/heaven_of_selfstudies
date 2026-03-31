@@ -78,7 +78,9 @@ export default function WeekPage() {
       try {
         setLoadingWeek(true);
         setError(null);
+        console.log('🔄 Fetching week:', weekId);
         const response = await yearInstanceAPI.getWeek(weekId);
+        console.log('✅ Week loaded:', response.data);
         setWeek(response.data);
         setSelectedWeek(response.data);
         if (response.data?.yearInstanceId) {
@@ -94,8 +96,7 @@ export default function WeekPage() {
     };
 
     fetchWeek();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekId]);
+  }, [weekId, setSelectedWeek, setSelectedYear]);
 
   // Fetch weeks list for the active year instance
   useEffect(() => {

@@ -514,7 +514,10 @@ exports.importNptelCourse = catchAsync(async (req, res, next) => {
   let weeksAdded = 0;
   let runsAdded = 0;
   for (const run of runsData) {
-    const { year, semester, totalWeeks, status, syllabus, weeks } = run;
+    const { year, semester, status, syllabus, weeks } = run;
+    
+    // Calculate totalWeeks from actual weeks array length to ensure validity
+    const totalWeeks = (weeks || []).length || 12;
 
     let yearInstance = await YearInstance.findOne({
       courseId: course._id,
@@ -528,7 +531,7 @@ exports.importNptelCourse = catchAsync(async (req, res, next) => {
         year,
         semester,
         status: status || 'completed',
-        totalWeeks: totalWeeks || 12,
+        totalWeeks,
         syllabus: syllabus || '',
       });
       runsAdded += 1;

@@ -1,7 +1,12 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 /**
- * HTTP Client wrapper
+ * Sleep utility for retries
+ */
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * HTTP Client wrapper with retry logic for rate limiting
  */
 const apiClient = async (endpoint, options = {}) => {
   const {
@@ -9,44 +14,73 @@ const apiClient = async (endpoint, options = {}) => {
     body = null,
     headers = {},
     includeAuth = true,
+    retries = 3,
   } = options;
 
-  const config = {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...headers,
-    },
-    credentials: 'include', // Include cookies for JWT
-  };
+  let lastError;
 
-  if (body) {
-    config.body = JSON.stringify(body);
-  }
-
-  try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-
-    // Parse response
-    let data;
+  for (let attempt = 0; attempt < retries; attempt += 1) {
     try {
-      data = await response.json();
-    } catch (e) {
-      // Handle non-JSON responses
-      data = { message: response.statusText || 'Server error' };
-    }
+      const config = {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...headers,
+        },
+        credentials: 'include', // Include cookies for JWT
+      };
 
-    if (!response.ok) {
-      const error = new Error(data.message || 'API request failed');
-      error.status = response.status;
-      error.data = data;
+      if (body) {
+        config.body = JSON.stringify(body);
+      }
+
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+
+      // Parse response
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        // Handle non-JSON responses
+        data = { message: response.statusText || 'Server error' };
+      }
+
+      if (!response.ok) {
+        const error = new Error(data.message || 'API request failed');
+        error.status = response.status;
+        error.data = data;
+
+        // Retry on 429 (Too Many Requests) with exponential backoff
+        if (response.status === 429 && attempt < retries - 1) {
+          const backoffMs = Math.min(1000 * Math.pow(2, attempt), 10000);
+          console.warn(`Rate limited. Retrying in ${backoffMs}ms... (attempt ${attempt + 1}/${retries})`);
+          await sleep(backoffMs);
+          lastError = error;
+          continue; // Retry
+        }
+
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      lastError = error;
+      // Only retry on rate limit errors
+      if (error.status === 429 && attempt < retries - 1) {
+        const backoffMs = Math.min(1000 * Math.pow(2, attempt), 10000);
+        await sleep(backoffMs);
+        continue;
+      }
+      // For other errors, throw immediately
+      console.error(`API Error [${endpoint}]:`, error.message);
       throw error;
     }
+  }
 
-    return data;
-  } catch (error) {
-    console.error(`API Error [${endpoint}]:`, error.message);
-    throw error;
+  // After all retries exhausted
+  if (lastError) {
+    console.error(`API Error [${endpoint}]: Max retries exceeded:`, lastError.message);
+    throw lastError;
   }
 };
 

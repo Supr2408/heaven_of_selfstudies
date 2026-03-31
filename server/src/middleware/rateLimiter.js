@@ -5,10 +5,11 @@ const rateLimit = require('express-rate-limit');
  */
 const generalLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 5000, // effectively disabled for local dev use
+  max: 10000, // 10k requests per minute for local dev - effectively disabled
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => process.env.NODE_ENV === 'development', // Skip in dev
 });
 
 /**

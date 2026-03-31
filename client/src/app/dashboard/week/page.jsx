@@ -73,46 +73,79 @@ export default function WeekPage() {
   // Fetch individual week when weekId changes
   useEffect(() => {
     if (!weekId) {
+      console.log('❌ No weekId provided');
       setWeek(null);
       currentWeekIdRef.current = null;
       return;
     }
 
     // Skip if we're already fetching this week
-    if (currentWeekIdRef.current === weekId) {
+    if (currentWeekIdRef.current === weekId && week?._id === weekId) {
+      console.log('⏸️  Skip: Already have this week');
       return;
     }
 
     currentWeekIdRef.current = weekId;
+    console.log('➡️  SET currentWeekIdRef to:', weekId);
+
+    let isMounted = true;
 
     const fetchWeek = async () => {
       try {
         setLoadingWeek(true);
         setError(null);
-        console.log('🔄 Fetching week:', weekId);
-        const response = await yearInstanceAPI.getWeek(weekId);
+        console.log('🌐 [API CALL] Fetching week with ID:', weekId);
         
-        // Only update if this is still the requested week
-        if (currentWeekIdRef.current === weekId) {
-          console.log('✅ Week loaded:', response.data?.weekNumber, response.data?.title);
-          setWeek(response.data);
-          setSelectedWeek(response.data);
-          if (response.data?.yearInstanceId) {
-            setActiveYearInstance(response.data.yearInstanceId);
-            setSelectedYear(response.data.yearInstanceId);
+        // Add timestamp to force fresh fetch (no caching)
+        const url = `/weeks/week/${weekId}?t=${Date.now()}`;
+        const response = await fetch(`http://localhost:5000/api${url}`);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('📥 [API RESPONSE] Received:', {
+          weekNumber: data.data?.weekNumber,
+          title: data.data?.title,
+          id: data.data?._id
+        });
+        
+        // Only update if still mounted and this is still the requested week
+        if (isMounted && currentWeekIdRef.current === weekId) {
+          console.log('✅ SETTING STATE with week:', data.data?.weekNumber);
+          setWeek(data.data);
+          setSelectedWeek(data.data);
+          if (data.data?.yearInstanceId) {
+            setActiveYearInstance(data.data.yearInstanceId);
+            setSelectedYear(data.data.yearInstanceId);
           }
+        } else {
+          console.log('⏭️  IGNORING STALE RESPONSE:', {
+            isMounted,
+            currentWeekId: currentWeekIdRef.current,
+            requestedWeekId: weekId,
+            match: currentWeekIdRef.current === weekId
+          });
         }
       } catch (err) {
-        if (currentWeekIdRef.current === weekId) {
-          console.error('Failed to fetch week details:', err);
+        if (isMounted && currentWeekIdRef.current === weekId) {
+          console.error('❌ Fetch error:', err);
           setError('Unable to load this week. Please pick another one.');
         }
       } finally {
-        setLoadingWeek(false);
+        if (isMounted) {
+          setLoadingWeek(false);
+        }
       }
     };
 
     fetchWeek();
+
+    return () => {
+      isMounted = false;
+      console.log('🧹 Cleanup for weekId:', weekId);
+    };
   }, [weekId]);
 
   // Fetch weeks list for the active year instance
@@ -185,6 +218,11 @@ export default function WeekPage() {
           {error}
         </div>
       )}
+
+      {/* DEBUG INFO */}
+      <div className="bg-yellow-50 border border-yellow-200 p-3 rounded text-xs text-yellow-800">
+        <span>🔍 DEBUG: Current Week ID={week?._id} | Week #{week?.weekNumber} | Title: {week?.title}</span>
+      </div>
 
       {loadingWeek ? (
         <div className="bg-white border border-slate-200 rounded-lg p-8 text-center">

@@ -94,7 +94,8 @@ export default function WeekPage() {
     };
 
     fetchWeek();
-  }, [weekId, setSelectedWeek, setSelectedYear]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekId]);
 
   // Fetch weeks list for the active year instance
   useEffect(() => {
@@ -120,7 +121,13 @@ export default function WeekPage() {
   useEffect(() => {
     if (!resolvedYearInstanceId) return;
 
-    if (selectedYear && selectedYear._id === resolvedYearInstanceId) {
+    // Skip if we already have the data from a previous fetch
+    if (activeYearInstance?._id === resolvedYearInstanceId) {
+      return;
+    }
+
+    // Also skip if selectedYear is already set to this ID
+    if (selectedYear?._id === resolvedYearInstanceId) {
       setActiveYearInstance(selectedYear);
       return;
     }
@@ -136,7 +143,8 @@ export default function WeekPage() {
     };
 
     fetchYearInstance();
-  }, [resolvedYearInstanceId, selectedYear, setSelectedYear]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedYearInstanceId]);
 
   const handleNavigateToWeek = (targetWeekId) => {
     if (!targetWeekId) return;

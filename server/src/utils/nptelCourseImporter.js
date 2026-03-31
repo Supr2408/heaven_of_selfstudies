@@ -404,12 +404,13 @@ const buildPlaceholderWeeks = (count = 12) =>
   });
 
 const buildWeeksFromSolutions = (groupedSolutions, expectedWeekCount = 12) => {
-  const weekNumbers = Array.from(groupedSolutions.keys()).filter((weekNumber) => weekNumber > 0);
-  const highestSolutionWeek = weekNumbers.length ? Math.max(...weekNumbers) : 0;
-  const totalWeeks = Math.max(expectedWeekCount, highestSolutionWeek, 1);
+  const weekNumbers = Array.from(groupedSolutions.keys()).filter((weekNumber) => weekNumber > 0 && groupedSolutions.get(weekNumber).length > 0);
+  
+  // Only create weeks that have actual materials - don't create placeholders
+  if (!weekNumbers.length) return [];
 
-  return Array.from({ length: totalWeeks }, (_, index) => {
-    const weekNumber = index + 1;
+  // Sort week numbers and create weeks only for those that have materials
+  return weekNumbers.sort((a, b) => a - b).map((weekNumber) => {
     const rawItems = groupedSolutions.get(weekNumber) || [];
     const seenUrls = new Set();
     const items = rawItems.filter((item) => {
@@ -424,12 +425,8 @@ const buildWeeksFromSolutions = (groupedSolutions, expectedWeekCount = 12) => {
     return {
       weekNumber,
       title: `Week ${String(weekNumber).padStart(2, '0')}`,
-      description: items.length
-        ? `Assignment solution PDFs found for Week ${weekNumber}.`
-        : `No assignment solution PDF found yet for Week ${weekNumber}.`,
-      topicsOverview: items.length
-        ? ['Assignment solution PDFs']
-        : ['Assignment solution branch'],
+      description: `Assignment solution PDFs found for Week ${weekNumber}.`,
+      topicsOverview: ['Assignment solution PDFs'],
       materials: items.map((item, itemIndex) => ({
         title: item.title || `Week ${weekNumber} Solution ${itemIndex + 1}`,
         type: 'solution',
@@ -557,7 +554,7 @@ const importNptelCourse = async ({
 
     const weeks = grouped.size
       ? buildWeeksFromSolutions(grouped, expectedWeekCount)
-      : buildPlaceholderWeeks(expectedWeekCount);
+      : []; // Only create weeks if materials actually exist - don't create placeholders
 
     runsData.push({
       courseCode: runCode || courseCodeNormalized || courseTitle,

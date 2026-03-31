@@ -78,12 +78,14 @@ export default function RegisterPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-900 mb-2">
+            <label htmlFor="name" className="block text-sm font-medium text-slate-900 mb-2">
               Full Name
             </label>
             <input
+              id="name"
               type="text"
               name="name"
+              autoComplete="name"
               value={formData.name}
               onChange={handleChange}
               required
@@ -92,12 +94,14 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-900 mb-2">
+            <label htmlFor="email" className="block text-sm font-medium text-slate-900 mb-2">
               Email
             </label>
             <input
+              id="email"
               type="email"
               name="email"
+              autoComplete="email"
               value={formData.email}
               onChange={handleChange}
               required
@@ -106,12 +110,14 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-900 mb-2">
+            <label htmlFor="password" className="block text-sm font-medium text-slate-900 mb-2">
               Password
             </label>
             <input
+              id="password"
               type="password"
               name="password"
+              autoComplete="new-password"
               value={formData.password}
               onChange={handleChange}
               required
@@ -121,12 +127,14 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-900 mb-2">
+            <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-900 mb-2">
               Confirm Password
             </label>
             <input
+              id="confirmPassword"
               type="password"
               name="confirmPassword"
+              autoComplete="new-password"
               value={formData.confirmPassword}
               onChange={handleChange}
               required

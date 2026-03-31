@@ -54,12 +54,14 @@ export default function LoginPage() {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-slate-900 mb-2">
+            <label htmlFor="email" className="block text-sm font-medium text-slate-900 mb-2">
               Email
             </label>
             <input
+              id="email"
               type="email"
               name="email"
+              autoComplete="email"
               value={formData.email}
               onChange={handleChange}
               required
@@ -68,12 +70,14 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-900 mb-2">
+            <label htmlFor="password" className="block text-sm font-medium text-slate-900 mb-2">
               Password
             </label>
             <input
+              id="password"
               type="password"
               name="password"
+              autoComplete="current-password"
               value={formData.password}
               onChange={handleChange}
               required

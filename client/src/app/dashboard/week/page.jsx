@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle, Download } from 'lucide-react';
 import WeekDetail from '@/components/WeekDetail';
@@ -58,6 +58,9 @@ export default function WeekPage() {
   const [loadingWeeks, setLoadingWeeks] = useState(false);
   const [error, setError] = useState(null);
 
+  // Track current weekId to prevent race conditions
+  const currentWeekIdRef = useRef(null);
+
   const resolvedYearInstanceId = useMemo(() => {
     return (
       providedYearInstanceId ||
@@ -71,8 +74,16 @@ export default function WeekPage() {
   useEffect(() => {
     if (!weekId) {
       setWeek(null);
+      currentWeekIdRef.current = null;
       return;
     }
+
+    // Skip if we're already fetching this week
+    if (currentWeekIdRef.current === weekId) {
+      return;
+    }
+
+    currentWeekIdRef.current = weekId;
 
     const fetchWeek = async () => {
       try {
@@ -80,23 +91,29 @@ export default function WeekPage() {
         setError(null);
         console.log('🔄 Fetching week:', weekId);
         const response = await yearInstanceAPI.getWeek(weekId);
-        console.log('✅ Week loaded:', response.data);
-        setWeek(response.data);
-        setSelectedWeek(response.data);
-        if (response.data?.yearInstanceId) {
-          setActiveYearInstance(response.data.yearInstanceId);
-          setSelectedYear(response.data.yearInstanceId);
+        
+        // Only update if this is still the requested week
+        if (currentWeekIdRef.current === weekId) {
+          console.log('✅ Week loaded:', response.data?.weekNumber, response.data?.title);
+          setWeek(response.data);
+          setSelectedWeek(response.data);
+          if (response.data?.yearInstanceId) {
+            setActiveYearInstance(response.data.yearInstanceId);
+            setSelectedYear(response.data.yearInstanceId);
+          }
         }
       } catch (err) {
-        console.error('Failed to fetch week details:', err);
-        setError('Unable to load this week. Please pick another one.');
+        if (currentWeekIdRef.current === weekId) {
+          console.error('Failed to fetch week details:', err);
+          setError('Unable to load this week. Please pick another one.');
+        }
       } finally {
         setLoadingWeek(false);
       }
     };
 
     fetchWeek();
-  }, [weekId, setSelectedWeek, setSelectedYear]);
+  }, [weekId]);
 
   // Fetch weeks list for the active year instance
   useEffect(() => {
@@ -174,7 +191,7 @@ export default function WeekPage() {
           <p className="text-slate-600">Loading week details…</p>
         </div>
       ) : week ? (
-        <WeekDetail week={week} />
+        <WeekDetail key={week._id} week={week} />
       ) : (
         <div className="bg-slate-50 border border-dashed border-slate-300 rounded-lg p-8 text-center">
           <p className="text-slate-700">

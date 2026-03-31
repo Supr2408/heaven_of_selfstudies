@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect } from 'react';
 import { Menu } from 'lucide-react';
 import Sidebar from './Sidebar';
 import useStore from '@/store/useStore';

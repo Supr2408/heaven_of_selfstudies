@@ -1,10 +1,9 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { Heart, MessageCircle, Share2, Flag } from 'lucide-react';
+import { Heart, MessageCircle, Flag } from 'lucide-react';
 import {
   initializeSocket,
-  getSocket,
   joinRoom,
   sendMessage as emitMessage,
 } from '@/lib/socket';
@@ -14,7 +13,19 @@ export default function ChatRoom({ weekId, courseId, year }) {
   const store = useStore();
   const [inputValue, setInputValue] = useState('');
   const [replyTo, setReplyTo] = useState(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef(null);
+  const socketRef = useRef(null);
+
+  // Validate required props
+  if (!weekId || !courseId || !year) {
+    return (
+      <div className="flex items-center justify-center h-96 bg-white rounded-lg border border-slate-200">
+        <p className="text-red-500">Error: Missing required chat data (weekId, courseId, or year)</p>
+      </div>
+    );
+  }
 
   const roomId = `${courseId}_${year}_${weekId}`;
 
@@ -22,37 +33,72 @@ export default function ChatRoom({ weekId, courseId, year }) {
   useEffect(() => {
     if (!store.user) return;
 
-    const socket = initializeSocket(store.user.name);
+    try {
+      setLoading(true);
+      setError('');
+      
+      const socket = initializeSocket(store.user.name);
+      socketRef.current = socket;
 
-    socket.on('connect', () => {
-      joinRoom(roomId, weekId, store.user._id);
-    });
+      const handleConnect = () => {
+        console.log('📡 Socket connected, joining room:', roomId);
+        joinRoom(roomId, weekId, store.user._id);
+      };
 
-    socket.on('message-history', (messages) => {
-      store.setMessages(messages);
-    });
+      const handleMessageHistory = (messages) => {
+        console.log('📥 Received message history:', messages.length, 'messages');
+        store.setMessages(messages);
+        setLoading(false);
+      };
 
-    socket.on('new-message', (message) => {
-      store.addMessage(message);
-    });
+      const handleNewMessage = (message) => {
+        console.log('💬 New message received:', message);
+        store.addMessage(message);
+      };
 
-    socket.on('message-edited', ({ messageId, content }) => {
-      store.updateMessage(messageId, { content, isEdited: true });
-    });
+      const handleError = (error) => {
+        console.error('❌ Socket error:', error);
+        setError(error.message || 'Connection error');
+      };
 
-    socket.on('message-deleted', ({ messageId }) => {
-      store.deleteMessage(messageId);
-    });
+      const handleMessageEdited = ({ messageId, content }) => {
+        store.updateMessage(messageId, { content, isEdited: true });
+      };
 
-    socket.on('user-typing', ({ userName }) => {
-      console.log(`${userName} is typing...`);
-    });
+      const handleMessageDeleted = ({ messageId }) => {
+        store.deleteMessage(messageId);
+      };
 
-    return () => {
-      socket.off('message-history');
-      socket.off('new-message');
-    };
-  }, [weekId, store.user]);
+      // Register event listeners
+      if (socket.connected) {
+        handleConnect();
+      } else {
+        socket.on('connect', handleConnect);
+      }
+
+      socket.on('message-history', handleMessageHistory);
+      socket.on('new-message', handleNewMessage);
+      socket.on('message-edited', handleMessageEdited);
+      socket.on('message-deleted', handleMessageDeleted);
+      socket.on('error', handleError);
+      socket.on('user-typing', ({ userName }) => {
+        console.log(`${userName} is typing...`);
+      });
+
+      return () => {
+        socket.off('connect', handleConnect);
+        socket.off('message-history', handleMessageHistory);
+        socket.off('new-message', handleNewMessage);
+        socket.off('message-edited', handleMessageEdited);
+        socket.off('message-deleted', handleMessageDeleted);
+        socket.off('error', handleError);
+      };
+    } catch (err) {
+      console.error('Chat initialization error:', err);
+      setError('Failed to initialize chat');
+      setLoading(false);
+    }
+  }, [weekId, courseId, year, store.user]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -70,14 +116,30 @@ export default function ChatRoom({ weekId, courseId, year }) {
 
   if (!store.isAuthenticated) {
     return (
-      <div className="flex items-center justify-center h-96">
+      <div className="flex items-center justify-center h-96 bg-white rounded-lg border border-slate-200">
         <p className="text-slate-500">Please login to access the chat</p>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96 bg-white rounded-lg border border-slate-200">
+        <p className="text-slate-500">Loading chat...</p>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col h-96 bg-white rounded-lg border border-slate-200">
+      {/* Error Banner */}
+      {error && (
+        <div className="px-4 py-2 bg-red-100 border-b border-red-400 text-red-700 text-sm">
+          <p>Chat Error: {error}</p>
+          <p className="text-xs mt-1 font-mono">Room: {roomId} | User: {store.user?._id}</p>
+        </div>
+      )}
+
       {/* Messages Container */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {store.messages.map((msg) => (

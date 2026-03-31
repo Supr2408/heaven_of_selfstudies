@@ -20,13 +20,11 @@ const generateToken = (userId) => {
 };
 
 /**
- * Generate HTTP Only Secure Cookie Token
+ * Generate HTTP Only Secure Cookie Options
  * Safe for production - prevents XSS and CSRF attacks
- * Returns { token, cookieOptions }
+ * Takes an already-generated token and returns cookie options
  */
-const generateHttpOnlyCookie = (userId) => {
-  const token = generateToken(userId);
-
+const generateHttpOnlyCookie = (token) => {
   const cookieOptions = {
     httpOnly: true, // Prevents JavaScript from accessing the cookie
     secure: process.env.NODE_ENV === 'production', // HTTPS only in production
@@ -35,7 +33,7 @@ const generateHttpOnlyCookie = (userId) => {
     path: '/',
   };
 
-  return { token, cookieOptions };
+  return { value: token, options: cookieOptions };
 };
 
 /**

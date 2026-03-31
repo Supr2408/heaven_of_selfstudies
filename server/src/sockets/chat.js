@@ -7,10 +7,12 @@ const { sanitizeMarkdown } = require('../utils/validation');
 const socketUserSessions = new Map();
 
 /**
- * Helper: Validate room naming format {courseId}_{year}_{weekNumber}
+ * Helper: Validate room naming format {courseId}_{year}_{weekId}
+ * Accepts: courseId_year_weekId (where courseId and weekId can be ObjectIds, slugs, or alphanumeric)
+ * Allows: alphanumeric, hyphens, underscores for courseId and weekId
  */
 function validateRoomFormat(roomId) {
-  const roomRegex = /^[a-zA-Z0-9]+_\d{4}_\d+$/;
+  const roomRegex = /^[a-zA-Z0-9\-_]+_\d{4}_[a-zA-Z0-9\-_]+$/;
   return roomRegex.test(roomId);
 }
 
@@ -75,7 +77,8 @@ const initializeSocketIO = (io, socket) => {
 
       // Validate room naming format
       if (!validateRoomFormat(roomId)) {
-        socket.emit('error', { message: 'Invalid room format' });
+        console.error(`❌ Invalid room format: ${roomId}`);
+        socket.emit('error', { message: `Invalid room format: ${roomId}` });
         return;
       }
 
@@ -99,6 +102,7 @@ const initializeSocketIO = (io, socket) => {
       });
 
       // Load message history (last 50 messages for this week only)
+      console.log(`📝 Loading message history for weekId: ${weekId}`);
       const messages = await Message.find({ weekId, isDeleted: false })
         .sort({ timestamp: -1 })
         .limit(50)
@@ -106,6 +110,7 @@ const initializeSocketIO = (io, socket) => {
         .populate('repliedTo', 'content userId')
         .lean();
 
+      console.log(`✅ Found ${messages.length} messages for week`);
       socket.emit('message-history', messages.reverse());
     } catch (error) {
       console.error('Error joining room:', error);
@@ -122,6 +127,7 @@ const initializeSocketIO = (io, socket) => {
       const { userId, weekId, roomId } = socket.userData;
 
       if (!content || !userId || !weekId) {
+        console.error('❌ Invalid message data', { content: !!content, userId: !!userId, weekId: !!weekId });
         socket.emit('error', { message: 'Invalid message data' });
         return;
       }
@@ -153,6 +159,7 @@ const initializeSocketIO = (io, socket) => {
       });
 
       await newMessage.save();
+      console.log(`✅ Message saved to DB - ID: ${newMessage._id}`);
 
       // Populate user info
       await newMessage.populate('userId', 'name avatar');

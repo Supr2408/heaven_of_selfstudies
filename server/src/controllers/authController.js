@@ -71,6 +71,7 @@ exports.register = catchAsync(async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: 'User registered successfully. Please verify your email.',
+      token: token,
       user: user.toJSON(),
     });
   } catch (dbError) {
@@ -114,6 +115,7 @@ exports.login = catchAsync(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: 'Logged in successfully',
+    token: token,
     user: user.toJSON(),
   });
 });
@@ -219,6 +221,7 @@ exports.resetPassword = catchAsync(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: 'Password reset successfully',
+    token: jwtToken,
   });
 });
 

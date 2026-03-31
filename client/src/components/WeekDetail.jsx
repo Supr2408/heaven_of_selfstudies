@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FileText, LinkIcon, HelpCircle, Eye, FileCode, ExternalLink, Download } from 'lucide-react';
 
 export default function WeekDetail({ week }) {
@@ -8,10 +8,13 @@ export default function WeekDetail({ week }) {
   const visibleMaterials = (week?.materials || []).filter(
     (material) => (material?.fileType || '').toLowerCase() !== 'video'
   );
-  const [previewUrl, setPreviewUrl] = useState(() => {
+  const [previewUrl, setPreviewUrl] = useState(null);
+
+  // Update preview URL when week changes
+  useEffect(() => {
     const firstPdf = visibleMaterials.find((m) => (m.fileType || '').toLowerCase() === 'pdf');
-    return firstPdf ? firstPdf.url : null;
-  });
+    setPreviewUrl(firstPdf ? firstPdf.url : null);
+  }, [week?.materials, visibleMaterials]);
 
   // Helper to get material type icon and color
   const getMaterialIcon = (type) => {

@@ -25,6 +25,7 @@ COPY . .
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
+RUN mkdir -p /app/uploads/community && chown -R nodejs:nodejs /app
 USER nodejs
 
 # Health check endpoint

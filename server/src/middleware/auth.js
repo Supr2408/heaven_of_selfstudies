@@ -83,8 +83,29 @@ const authorize = (...roles) => {
   };
 };
 
+/**
+ * Require a Google-authenticated user for write actions
+ */
+const requireGoogleUser = (req, res, next) => {
+  if (!req.user) {
+    return next(new AppError('Please login first', 401));
+  }
+
+  if (req.user.authProvider !== 'google') {
+    return next(
+      new AppError(
+        'Please sign in with Google to post, reply, or participate in chat.',
+        403
+      )
+    );
+  }
+
+  next();
+};
+
 module.exports = {
   protectRoute,
   optionalAuth,
   authorize,
+  requireGoogleUser,
 };

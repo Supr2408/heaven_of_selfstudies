@@ -11,13 +11,13 @@ exports.getResources = catchAsync(async (req, res) => {
   const { weekId } = req.params;
   const { page = 1, limit = 10, type, sortBy = 'createdAt' } = req.query;
 
-  let filter = { weekId, isDeleted: false };
+  let filter = { weekId, isDeleted: { $ne: true } };
   if (type) filter.type = type;
 
   const skip = (page - 1) * limit;
   const resources = await Resource.find(filter)
-    .populate('userId', 'name avatar')
-    .populate('comments.userId', 'name avatar')
+    .populate('userId', 'name displayName avatar')
+    .populate('comments.userId', 'name displayName avatar')
     .sort({ [sortBy]: -1 })
     .skip(skip)
     .limit(parseInt(limit));
@@ -41,8 +41,8 @@ exports.getResource = catchAsync(async (req, res, next) => {
   const { id } = req.params;
 
   const resource = await Resource.findById(id)
-    .populate('userId', 'name avatar bio')
-    .populate('comments.userId', 'name avatar');
+    .populate('userId', 'name displayName avatar bio')
+    .populate('comments.userId', 'name displayName avatar');
 
   if (!resource) {
     return next(new AppError('Resource not found', 404));
@@ -86,7 +86,7 @@ exports.createResource = catchAsync(async (req, res, next) => {
     tags: tags ? tags.map((t) => t.toLowerCase()) : [],
   });
 
-  await resource.populate('userId', 'name avatar');
+  await resource.populate('userId', 'name displayName avatar');
 
   res.status(201).json({
     success: true,
@@ -124,7 +124,7 @@ exports.createUploadedResource = catchAsync(async (req, res, next) => {
     tags: ['pending-review', 'community-upload'],
   });
 
-  await resource.populate('userId', 'name avatar');
+  await resource.populate('userId', 'name displayName avatar');
 
   res.status(201).json({
     success: true,
@@ -326,7 +326,7 @@ exports.addComment = catchAsync(async (req, res, next) => {
   });
 
   await resource.save();
-  await resource.populate('comments.userId', 'name avatar');
+  await resource.populate('comments.userId', 'name displayName avatar');
 
   res.status(201).json({
     success: true,
@@ -342,8 +342,8 @@ exports.getTrendingResources = catchAsync(async (req, res) => {
   const { weekId } = req.params;
   const limit = parseInt(req.query.limit) || 5;
 
-  const resources = await Resource.find({ weekId })
-    .populate('userId', 'name avatar')
+  const resources = await Resource.find({ weekId, isDeleted: { $ne: true } })
+    .populate('userId', 'name displayName avatar')
     .sort({ upvotes: -1, views: -1 })
     .limit(limit);
 

@@ -1,381 +1,219 @@
-# NPTEL Hub - Production-ready Community Learning Platform
+# NPTEL Hub
 
-A structured, community-driven ecosystem for NPTEL learners with real-time collaboration, resource sharing, and hierarchical course navigation.
+NPTEL Hub is a community-driven learning platform for navigating NPTEL subjects, courses, batches, and weeks, while giving learners a shared space for discussions, notes, and short-lived live chat.
 
-**Disclaimer:** Not affiliated with NPTEL. Content belongs to original creators.
+This codebase currently uses:
+- `Next.js` App Router on the frontend
+- `Express + MongoDB + Socket.io` on the backend
+- `Tailwind CSS`, `Zustand`, `Lucide React`, and `react-pdf`
 
-## 🎯 Features
+## What the app does
 
-### Core Functionality
-- ✅ **Hierarchical Navigation**: Subject → Course → Year → Week drill-down
-- ✅ **Real-time Chat**: Socket.io-powered per-week dedicated rooms
-- ✅ **Community Vault**: Grid-based notes/links with upvote system
-- ✅ **Past Year Questions**: Direct links to PYQs (no PDF hosting)
-- ✅ **JWT Authentication**: Secure login with HttpOnly cookies
-- ✅ **Rate Limiting**: Protection against abuse
-- ✅ **XSS Prevention**: Input sanitization on all user content
-- ✅ **Report System**: Users can flag inappropriate content
+- Browse `Subject -> Course -> Year/Batch -> Week`
+- Open week materials in a study-focused PDF viewer
+- Read and contribute to week-wise community discussions
+- Use a simple common discussion page for broader community posts
+- Join quick chat for temporary live conversation
+- Upload missing PDFs for admin review
 
-### Tech Stack
-| Layer | Technology |
-|-------|-----------|
-| **Frontend** | Next.js 14+ (App Router), Tailwind CSS, Zustand, Lucide React |
-| **Backend** | Node.js, Express.js, Modular architecture |
-| **Real-time** | Socket.io with dedicated room logic |
-| **Database** | MongoDB with Mongoose (strict schemas) |
-| **Auth** | JWT + Bcrypt |
-| **Storage** | AWS S3 / Firebase (optional) |
+## Current access model
 
-## 📊 Data Models
+- The app auto-creates a browser-specific guest session on first load
+- Guests can browse subjects, courses, weeks, materials, and discussions
+- Guests can read quick chat, but cannot send messages
+- Google sign-in unlocks posting, replying, and quick chat participation
+- A development-only demo login is available locally as a fallback
 
-```
-Subject → Courses → YearInstance → Weeks → {
-  Messages (Real-time Chat),
-  Resources (Vault),
-  PyqLinks
-}
-```
+## Current auth behavior
 
-### Strict Schema Validation
-- **Subject**: name, slug
-- **Course**: subjectId, title, code, description
-- **YearInstance**: courseId, year, semester (Jan-Apr/July-Oct)
-- **Week**: yearInstanceId, weekNumber (1-12)
-- **Message**: weekId, userId, content, timestamp, repliedTo
-- **Resource**: weekId, userId, title, type (Link/Note/Solution/Discussion), url, upvotes
+- `Google sign-in` is the real write-enabled login flow
+- `Guest mode` is automatic and browser-specific
+- `Demo login` is for local development only
+- Legacy email/password routes still exist in the API surface, but they intentionally reject requests in the current product mode
 
-## 🚀 Quick Start
+## Community behavior
 
-### Prerequisites
-- Node.js (≥18)
-- MongoDB (local or MongoDB Atlas)
-- npm/yarn
+- Week discussion board:
+  - visible to everyone
+  - posting/replying requires Google sign-in
+- Quick chat:
+  - visible to everyone
+  - sending requires Google sign-in
+  - links, phone numbers, emails, and contact/group-promotion are blocked
+  - messages are temporary
+- Common discussion page:
+  - shared feed for simple community-wide posts and replies
+  - read for all, write for Google users
 
-### 1. Clone & Setup
+## Anonymous public username
 
-```bash
-git clone https://github.com/yourusername/nptel-hub.git
-cd nptel-hub
-```
+Google users can choose a public username for discussions and chat.
 
-### 2. Backend Setup
+- it is shown publicly instead of the Google profile name
+- once saved, that anonymous public username becomes fixed
+- the user can roll back to the original Google name
+- after rollback, they cannot choose a different anonymous username again
 
-```bash
-cd server
-cp .env.example .env
-# Edit .env with your credentials
+## Live presence
 
-npm install
-npm run dev
-# Runs on http://localhost:5000
-```
+The top navbar shows a live `Active users` count powered by the existing Socket.io connection.
 
-### 3. Frontend Setup
+## Project structure
 
-```bash
-cd ../client
-cp .env.local.example .env.local
-npm install
-npm run dev
-# Runs on http://localhost:3000
-```
-
-### 4. MongoDB Setup
-
-**Option A: Local MongoDB**
-```bash
-# Install MongoDB Community Edition
-# macOS: brew install mongodb-community
-# Windows: Download from mongodb.com
-mongod
-```
-
-**Option B: MongoDB Atlas (Recommended)**
-```
-# Get connection string from mongodb.com
-# Add to server/.env
-MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net/nptel-hub
-```
-
-## 📖 API Documentation
-
-### Authentication Endpoints
-```
-POST   /api/auth/register           - Register new user
-POST   /api/auth/login              - Login
-POST   /api/auth/verify-email       - Verify email
-POST   /api/auth/forgot-password    - Request reset
-POST   /api/auth/reset-password     - Reset password
-GET    /api/auth/me                 - Get current user (protected)
-PUT    /api/auth/profile            - Update profile (protected)
-POST   /api/auth/change-password    - Change password (protected)
-POST   /api/auth/logout             - Logout
-```
-
-### Course Navigation
-```
-GET    /api/courses/subjects                    - All subjects
-GET    /api/courses/subjects/:slug              - Subject by slug
-GET    /api/courses/courses/subject/:subjectId  - Courses in subject
-GET    /api/courses/courses/code/:code          - Course by code
-```
-
-### Week & Content
-```
-GET    /api/weeks/year-instances/:courseId      - Year instances
-GET    /api/weeks/year-instances/:id            - Specific instance
-GET    /api/weeks/weeks/:yearInstanceId         - Weeks in instance
-GET    /api/weeks/week/:id                      - Specific week
-GET    /api/weeks/week/:weekId/stats            - Week statistics
-```
-
-### Resources
-```
-GET    /api/resources/resources/:weekId         - List resources
-GET    /api/resources/resource/:id              - Get resource
-POST   /api/resources/resources                 - Create (protected)
-PUT    /api/resources/resources/:id             - Update (protected)
-DELETE /api/resources/resources/:id             - Delete (protected)
-POST   /api/resources/resources/:id/upvote      - Upvote (protected)
-POST   /api/resources/resources/:id/downvote    - Downvote (protected)
-POST   /api/resources/resources/:id/comments    - Add comment (protected)
-POST   /api/resources/resources/:id/report      - Report (protected)
-```
-
-## 🔌 Socket.io Chat Events
-
-### Client → Server
-```javascript
-// Join a week's chat room
-socket.emit('join-room', { roomId: 'CS101_2024_01', weekId, userId })
-
-// Send message
-socket.emit('send-message', { content: 'Hello!' })
-
-// Thread reply
-socket.emit('send-message', { content: 'Great point!', repliedTo: messageId })
-
-// Edit message (owner only)
-socket.emit('edit-message', { messageId, content: 'Updated...' })
-
-// Delete message (owner/moderator only)
-socket.emit('delete-message', { messageId })
-
-// Add reaction
-socket.emit('add-reaction', { messageId, emoji: '👍' })
-
-// Report message
-socket.emit('report-message', { messageId, reason: 'Spam' })
-
-// Typing indicator
-socket.emit('typing', { userName: 'John' })
-socket.emit('stop-typing')
-
-// Leave room
-socket.emit('leave-room')
-```
-
-### Server → Client
-```javascript
-socket.on('message-history', messages)       // Initial 50 messages
-socket.on('new-message', message)            // New message broadcast
-socket.on('message-edited', {messageId, content})
-socket.on('message-deleted', {messageId})
-socket.on('reaction-added', {messageId, reactions})
-socket.on('user-joined', {message})
-socket.on('user-typing', {userName})
-socket.on('user-disconnected', {message})
-socket.on('error', {message})
-```
-
-## 🔐 Security Features
-
-| Feature | Implementation |
-|---------|-----------------|
-| **Password Hashing** | Bcrypt (10 salt rounds) |
-| **JWT Auth** | HttpOnly cookies + Bearer token fallback |
-| **Rate Limiting** | Express-rate-limit (auth: 5/15min, chat: 30/min) |
-| **Input Sanitization** | HTML entity encoding, XSS prevention |
-| **CORS** | Restricted to frontend URL |
-| **SQL Injection** | Mongoose (prevents NoSQL injection) |
-| **CSRF** | Token validation in protected routes |
-
-## 📁 Project Structure
-
-```
+```text
 nptel-hub/
-├── server/
-│   ├── src/
-│   │   ├── models/           # Mongoose schemas (User, Course, Week, Message, Resource)
-│   │   ├── routes/           # Express routes (auth, courses, weeks, resources)
-│   │   ├── controllers/       # Business logic
-│   │   ├── middleware/        # Auth, rate limiting, error handling
-│   │   ├── sockets/          # Socket.io chat logic
-│   │   └── utils/            # JWT, email, validation, errors
-│   ├── server.js            # Express + Socket.io setup
-│   ├── package.json
-│   └── .env.example
-│
-├── client/
-│   ├── src/
-│   │   ├── app/              # Next.js pages (login, register, dashboard)
-│   │   ├── components/       # React components
-│   │   │   ├── Sidebar.jsx
-│   │   │   ├── ChatRoom.jsx
-│   │   │   ├── ResourceVault.jsx
-│   │   │   └── MainLayout.jsx
-│   │   ├── lib/
-│   │   │   ├── api.js       # API client wrapper
-│   │   │   └── socket.js    # Socket.io utilities
-│   │   ├── store/
-│   │   │   └── useStore.js  # Zustand global state
-│   │   └── app/globals.css  # Tailwind CSS
-│   ├── package.json
-│   ├── next.config.js
-│   ├── tsconfig.json
-│   └── .env.local.example
-│
+├── client/                     # Next.js frontend
+│   ├── src/app/                # App Router pages
+│   ├── src/components/         # UI components
+│   ├── src/lib/                # API + socket helpers
+│   └── src/store/              # Zustand store
+├── server/                     # Express backend
+│   ├── src/controllers/        # Route logic
+│   ├── src/models/             # Mongoose models
+│   ├── src/routes/             # API routes
+│   ├── src/sockets/            # Socket.io handlers
+│   └── src/utils/              # Shared server utilities
 ├── README.md
+├── QUICK_START.md
+├── SETUP.md
 ├── CONTRIBUTING.md
-├── LICENSE
-└── docker-compose.yml
+└── DOCUMENTATION_INDEX.md
 ```
 
-## 🐳 Docker Deployment
+## Environment variables
 
-```bash
-docker-compose up -d
+### Frontend: `client/.env.local`
 
-# Frontend: http://localhost:3000
-# Backend: http://localhost:5000
-# MongoDB: localhost:27017
+```env
+NEXT_PUBLIC_API_URL=http://localhost:5000/api
+NEXT_PUBLIC_SOCKET_URL=http://localhost:5000
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=your_google_oauth_client_id
 ```
 
-**docker-compose.yml:**
-```yaml
-version: '3.8'
-services:
-  mongodb:
-    image: mongo:latest
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
+### Backend: `server/.env`
 
-  backend:
-    build: ./server
-    ports:
-      - "5000:5000"
-    env_file: ./server/.env
-    depends_on:
-      - mongodb
-
-  frontend:
-    build: ./client
-    ports:
-      - "3000:3000"
-
-volumes:
-  mongo_data:
-```
-
-## 📝 Environment Variables
-
-### Backend (.env)
 ```env
 PORT=5000
 NODE_ENV=development
 MONGODB_URI=mongodb://localhost:27017/nptel-hub
-JWT_SECRET=your_super_secret_key
+JWT_SECRET=replace_this_with_a_long_random_secret
 FRONTEND_URL=http://localhost:3000
-EMAIL_USER=your_email@gmail.com
-EMAIL_PASSWORD=gmail_app_password
+GOOGLE_CLIENT_ID=your_google_oauth_client_id
+DEMO_USER_EMAIL=demo@nptelhub.com
+DEMO_USER_NAME=Demo Learner
 ```
 
-### Frontend (.env.local)
-```env
-NEXT_PUBLIC_API_URL=http://localhost:5000/api
-NEXT_PUBLIC_SOCKET_URL=http://localhost:5000
+## Local development
+
+### 1. Install dependencies
+
+```bash
+cd server
+npm install
+
+cd ../client
+npm install
 ```
 
-## 🎓 Example Usage Flow
+### 2. Configure env files
 
-1. **User Registration**
-   ```
-   POST /api/auth/register
-   → Email verification sent
-   → JWT token generated
-   → Redirected to dashboard
-   ```
+Copy:
 
-2. **Navigate to Week**
-   ```
-   Subject: "Mathematics"
-   → Course: "Linear Algebra (MA103)"
-   → Year: "2024 Jan-Apr"
-   → Week: "Week 3: Eigenvalues"
-   ```
+- `server/.env.example` -> `server/.env`
+- `client/.env.local.example` -> `client/.env.local`
 
-3. **Access Week Content**
-   ```
-   [Video Lecture] [Lecture Notes]
-   
-   TAB 1: PYQs (Past Year Questions)
-     Q1: 2021 - "Prove the characteristic polynomial..."
-     Q2: 2020 - "Find eigenvalues of..."
-   
-   TAB 2: Real-time Chat (Socket.io)
-     [Message flow with threading]
-   
-   TAB 3: Community Vault
-     📝 Notes by user (50 upvotes)
-     🔗 External resources
-     💡 Solution sketches
-   ```
+Then fill in:
 
-4. **Collaborative Features**
-   - Post/edit/delete messages in real-time
-   - Reply to specific messages (threading)
-   - React with emojis
-   - Upload and vote on resources
-   - Report inappropriate content
+- MongoDB connection string
+- JWT secret
+- frontend URL
+- Google OAuth client ID for both frontend and backend
 
-## 🤝 Contributing
+### 3. Run the backend
 
-See [CONTRIBUTING.md](CONTRIBUTING.md)
+```bash
+cd server
+npm run dev
+```
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+Backend runs at `http://localhost:5000`.
 
-## 📜 License
+### 4. Run the frontend
 
-MIT License - See [LICENSE](LICENSE) file
+```bash
+cd client
+npm run dev
+```
 
-## ⚠️ Disclaimer
+Frontend runs at `http://localhost:3000`.
 
-**NPTEL Hub** is an independent community project and is not affiliated with or endorsed by NPTEL (National Programme on Technology Enhanced Learning), IIT (Indian Institute of Technology), MHRD (Ministry of Human Resource Development), or the Government of India.
+## Useful routes
 
-All course content belongs to the original creators and respective institutions. This platform is built to facilitate learning and collaboration only. Users are responsible for ensuring they comply with copyright and fair use policies.
+- `/dashboard` - main landing page after auth/bootstrap
+- `/dashboard/week?weekId=...` - live week experience
+- `/assignments` - common discussion page
+- `/login` - sign in / demo fallback page
 
-## 🔗 Resources
+## Main API routes
 
-- [NPTEL Official](https://nptel.ac.in/)
-- [Next.js Docs](https://nextjs.org/docs)
-- [Express.js Guide](https://expressjs.com/)
-- [MongoDB Documentation](https://docs.mongodb.com/)
-- [Socket.io Guide](https://socket.io/docs/)
-- [Tailwind CSS](https://tailwindcss.com/)
+### Auth
 
-## 💬 Support
+- `POST /api/auth/guest`
+- `POST /api/auth/google`
+- `POST /api/auth/dev-login`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+- `PUT /api/auth/profile`
 
-For issues, questions, or contributions:
-- Open an issue on GitHub
-- Check existing discussions
-- Read documentation carefully
+### Courses and weeks
 
----
+- `GET /api/courses/subjects`
+- `GET /api/courses/subjects/:slug`
+- `GET /api/weeks/year-instances`
+- `GET /api/weeks/year-instances/course/:courseId`
+- `GET /api/weeks/year-instance/:id`
+- `GET /api/weeks/weeks/:yearInstanceId`
+- `GET /api/weeks/week/:id`
+- `GET /api/weeks/week/:weekId/materials`
+- `GET /api/weeks/week/:weekId/materials/:materialIndex/pdf`
 
-**Built with ❤️ for NPTEL learners worldwide**
+### Week discussion/resources
+
+- `GET /api/resources/resources/:weekId`
+- `GET /api/resources/resource/:id`
+- `GET /api/resources/trending/:weekId`
+- `POST /api/resources/resources`
+- `POST /api/resources/resources/upload`
+- `POST /api/resources/resources/:id/comments`
+
+### Common discussion
+
+- `GET /api/common-discussion/posts`
+- `POST /api/common-discussion/posts`
+- `POST /api/common-discussion/posts/:id/replies`
+
+## Verification
+
+Useful checks before pushing:
+
+```bash
+cd client
+npm run build
+
+cd ../server
+node -e "require('./src/controllers/authController'); console.log('ok')"
+node -e "require('./src/controllers/yearInstanceController'); console.log('ok')"
+node -e "require('./src/sockets/chat'); console.log('ok')"
+```
+
+## Documentation
+
+- [QUICK_START.md](QUICK_START.md)
+- [SETUP.md](SETUP.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)
+- [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)
+
+## Disclaimer
+
+NPTEL Hub is an independent community project. It is not affiliated with NPTEL, IIT, or any government body. Original content belongs to the original creators.

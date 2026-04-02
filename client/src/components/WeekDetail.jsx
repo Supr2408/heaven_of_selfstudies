@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { FileText, Loader2, UploadCloud } from 'lucide-react';
 import StudyPdfViewer from '@/components/StudyPdfViewer';
 import { resourceAPI } from '@/lib/api';
+import { isGoogleUser, isGuestLikeUser } from '@/lib/user';
 import useStore from '@/store/useStore';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
@@ -14,9 +16,12 @@ const getBatchLabel = (yearInstance) => {
 };
 
 export default function WeekDetail({ week, yearInstance, navigationSlot = null }) {
-  const { isAuthenticated } = useStore((state) => ({
+  const { isAuthenticated, user } = useStore((state) => ({
     isAuthenticated: state.isAuthenticated,
+    user: state.user,
   }));
+  const canUploadMissingMaterial = isGoogleUser(user);
+  const isGuestMode = isGuestLikeUser(user);
   const firstPdfIndex = (week?.materials || []).findIndex(
     (material) => (material?.fileType || '').toLowerCase() === 'pdf'
   );
@@ -37,10 +42,10 @@ export default function WeekDetail({ week, yearInstance, navigationSlot = null }
   });
 
   const handleUpload = async () => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !canUploadMissingMaterial) {
       setUploadState((state) => ({
         ...state,
-        error: 'Please log in first to upload a PDF for review.',
+        error: 'Please sign in to contribute missing files for this week.',
         message: '',
       }));
       return;
@@ -134,95 +139,118 @@ export default function WeekDetail({ week, yearInstance, navigationSlot = null }
               </p>
             </div>
 
-            <div className="mx-auto mt-6 max-w-3xl rounded-2xl border border-dashed border-slate-300 bg-white p-5">
-              <div className="flex items-start gap-3">
-                <div className="rounded-2xl bg-blue-50 p-3 text-blue-600">
-                  <UploadCloud size={22} />
-                </div>
-                <div>
-                  <p className="text-base font-semibold text-slate-900">Upload a community PDF</p>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Students can submit missing solution PDFs here. Admin verification will be added later, so every upload is stored as pending review for now.
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-5 grid gap-4">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Title</label>
-                  <input
-                    value={uploadState.title}
-                    onChange={(event) =>
-                      setUploadState((state) => ({
-                        ...state,
-                        title: event.target.value,
-                      }))
-                    }
-                    className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    placeholder="Week 03 community solution PDF"
-                  />
+            <div className="relative mx-auto mt-6 max-w-3xl rounded-2xl border border-dashed border-slate-300 bg-white p-5">
+              <div className={canUploadMissingMaterial ? '' : 'pointer-events-none select-none blur-[3px] opacity-60'}>
+                <div className="flex items-start gap-3">
+                  <div className="rounded-2xl bg-blue-50 p-3 text-blue-600">
+                    <UploadCloud size={22} />
+                  </div>
+                  <div>
+                    <p className="text-base font-semibold text-slate-900">Upload a community PDF</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Students can submit missing solution PDFs here. Admin verification will be added later, so every upload is stored as pending review for now.
+                    </p>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Note for reviewer
-                  </label>
-                  <textarea
-                    value={uploadState.description}
-                    onChange={(event) =>
-                      setUploadState((state) => ({
-                        ...state,
-                        description: event.target.value,
-                      }))
-                    }
-                    rows={3}
-                    className="w-full resize-none rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    placeholder="Mention source or anything useful about this uploaded PDF."
-                  />
-                </div>
+                <div className="mt-5 grid gap-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">Title</label>
+                    <input
+                      value={uploadState.title}
+                      onChange={(event) =>
+                        setUploadState((state) => ({
+                          ...state,
+                          title: event.target.value,
+                        }))
+                      }
+                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      placeholder="Week 03 community solution PDF"
+                    />
+                  </div>
 
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">PDF file</label>
-                  <input
-                    type="file"
-                    accept="application/pdf,.pdf"
-                    onChange={(event) =>
-                      setUploadState((state) => ({
-                        ...state,
-                        file: event.target.files?.[0] || null,
-                        error: '',
-                        message: '',
-                      }))
-                    }
-                    className="block w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 file:mr-4 file:rounded-full file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-blue-700"
-                  />
-                  {uploadState.file ? (
-                    <p className="mt-2 text-xs text-slate-500">{uploadState.file.name}</p>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                      Note for reviewer
+                    </label>
+                    <textarea
+                      value={uploadState.description}
+                      onChange={(event) =>
+                        setUploadState((state) => ({
+                          ...state,
+                          description: event.target.value,
+                        }))
+                      }
+                      rows={3}
+                      className="w-full resize-none rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      placeholder="Mention source or anything useful about this uploaded PDF."
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">PDF file</label>
+                    <input
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      onChange={(event) =>
+                        setUploadState((state) => ({
+                          ...state,
+                          file: event.target.files?.[0] || null,
+                          error: '',
+                          message: '',
+                        }))
+                      }
+                      className="block w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 file:mr-4 file:rounded-full file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-blue-700"
+                    />
+                    {uploadState.file ? (
+                      <p className="mt-2 text-xs text-slate-500">{uploadState.file.name}</p>
+                    ) : null}
+                  </div>
+
+                  {uploadState.error ? (
+                    <p className="text-sm font-medium text-red-600">{uploadState.error}</p>
                   ) : null}
-                </div>
 
-                {uploadState.error ? (
-                  <p className="text-sm font-medium text-red-600">{uploadState.error}</p>
-                ) : null}
+                  {uploadState.message ? (
+                    <p className="text-sm font-medium text-emerald-600">{uploadState.message}</p>
+                  ) : null}
 
-                {uploadState.message ? (
-                  <p className="text-sm font-medium text-emerald-600">{uploadState.message}</p>
-                ) : null}
-
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    onClick={handleUpload}
-                    disabled={uploading}
-                    className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    {uploading ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
-                    Upload for review
-                  </button>
-                  <span className="text-xs text-slate-500">
-                    PDF only. The submission is not treated as official material until admin approval.
-                  </span>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      onClick={handleUpload}
+                      disabled={uploading}
+                      className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {uploading ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
+                      Upload for review
+                    </button>
+                    <span className="text-xs text-slate-500">
+                      PDF only. The submission is not treated as official material until admin approval.
+                    </span>
+                  </div>
                 </div>
               </div>
+
+              {!canUploadMissingMaterial ? (
+                <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-white/45 px-6 text-center backdrop-blur-[1px]">
+                  <div className="max-w-md rounded-2xl border border-blue-200 bg-white/95 px-5 py-4 shadow-sm">
+                    <p className="text-base font-semibold text-slate-900">
+                      Please contribute this missing file by signing in
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      {isGuestMode
+                        ? 'Guest and demo access can browse materials, but only signed-in members can upload missing PDFs for review.'
+                        : 'Only signed-in members can upload missing PDFs for review.'}
+                    </p>
+                    <Link
+                      href="/login"
+                      className="mt-4 inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                    >
+                      Sign in to contribute
+                    </Link>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         )}

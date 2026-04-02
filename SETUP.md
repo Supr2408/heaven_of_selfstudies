@@ -1,405 +1,210 @@
-# NPTEL Hub - Complete Setup Guide
+# Setup Guide
 
-A comprehensive guide to get NPTEL Hub running locally on your machine.
+This guide describes the current setup for the repo as it exists now.
+
+## Stack
+
+- Frontend: Next.js App Router, Tailwind CSS, Zustand, Socket.io client, react-pdf
+- Backend: Express, MongoDB, Mongoose, Socket.io
+- Auth: guest bootstrap, Google sign-in, development demo login
 
 ## Prerequisites
 
-### Required Software
-- **Node.js** (≥18.0.0) - [Download](https://nodejs.org/)
-- **MongoDB** (≥5.0) - [Download](https://www.mongodb.com/try/download/community)
-- **npm** (≥9.0.0) - Comes with Node.js
-- **Git** - [Download](https://git-scm.com/)
-- **Code Editor** - VS Code recommended
+- Node.js 18 or newer recommended
+- npm 9 or newer recommended
+- MongoDB local instance or MongoDB Atlas
+- A Google OAuth client ID if you want real Google sign-in locally
 
-### Optional but Recommended
-- **Postman** - For API testing
-- **MongoDB Compass** - GUI for MongoDB
-- **Docker** - For containerized deployment
+## Repository layout
 
-## Step-by-Step Setup
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/yourusername/nptel-hub.git
-cd nptel-hub
+```text
+nptel-hub/
+├── client/
+├── server/
+├── README.md
+├── QUICK_START.md
+└── SETUP.md
 ```
 
-### 2. Backend Setup
+## Backend setup
 
-#### 2.1 Navigate to Server Directory
+### 1. Install packages
+
 ```bash
 cd server
-```
-
-#### 2.2 Install Dependencies
-```bash
 npm install
 ```
 
-#### 2.3 Configure Environment Variables
-```bash
-cp .env.example .env
-```
+### 2. Create `server/.env`
 
-Edit `.env` file with your configuration:
+Copy `server/.env.example` to `server/.env`.
+
+Minimum recommended values:
+
 ```env
-# Server
 PORT=5000
 NODE_ENV=development
-
-# Database - Choose one option:
-
-# Option A: Local MongoDB
 MONGODB_URI=mongodb://localhost:27017/nptel-hub
-
-# Option B: MongoDB Atlas
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/nptel-hub
-
-# JWT & Security
-JWT_SECRET=your_super_secret_jwt_key_12345
-
-# Frontend URL
+JWT_SECRET=replace_this_with_a_long_random_secret
 FRONTEND_URL=http://localhost:3000
-
-# Email Configuration (Gmail)
-EMAIL_USER=your_email@gmail.com
-EMAIL_PASSWORD=your_16_digit_app_password
-
-# AWS S3 (Optional)
-AWS_ACCESS_KEY_ID=your_key
-AWS_SECRET_ACCESS_KEY=your_secret
-AWS_S3_BUCKET_NAME=your_bucket
-
-# Firebase (Optional Alternative)
-FIREBASE_PROJECT_ID=your_project
-FIREBASE_PRIVATE_KEY=your_key
-FIREBASE_CLIENT_EMAIL=your_email@project.iam.gserviceaccount.com
+GOOGLE_CLIENT_ID=your_google_oauth_client_id
 ```
 
-#### 2.4 Start Backend Server
+Optional local demo values:
+
+```env
+DEMO_USER_EMAIL=demo@nptelhub.com
+DEMO_USER_NAME=Demo Learner
+```
+
+### 3. Start the backend
+
 ```bash
 npm run dev
 ```
 
-Expected output:
-```
-Server running on port 5000
-MongoDB connected
-Socket.io initialized
-```
+## Frontend setup
 
-**✅ Backend is ready at `http://localhost:5000`**
+### 1. Install packages
 
-### 3. Frontend Setup
-
-#### 3.1 Navigate to Client Directory
 ```bash
-cd ../client
-```
-
-#### 3.2 Install Dependencies
-```bash
+cd client
 npm install
 ```
 
-#### 3.3 Configure Environment Variables
-```bash
-cp .env.local.example .env.local
-```
+### 2. Create `client/.env.local`
 
-Edit `.env.local`:
+Copy `client/.env.local.example` to `client/.env.local`.
+
+Set:
+
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:5000/api
 NEXT_PUBLIC_SOCKET_URL=http://localhost:5000
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=your_google_oauth_client_id
 ```
 
-#### 3.4 Start Frontend Server
+### 3. Start the frontend
+
 ```bash
 npm run dev
 ```
 
-Expected output:
-```
-> ready - started server on 0.0.0.0:3000, url: http://localhost:3000
-```
+## Google sign-in setup
 
-**✅ Frontend is ready at `http://localhost:3000`**
+Create a Google OAuth web client and use the same client ID in:
 
-### 4. MongoDB Setup
+- `client/.env.local` as `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
+- `server/.env` as `GOOGLE_CLIENT_ID`
 
-#### Option A: Local MongoDB
+For local development, make sure your Google OAuth client allows:
 
-**Windows:**
-1. Download MongoDB Community Server
-2. Run installer and follow setup wizard
-3. MongoDB runs as service automatically
-4. Default: `mongodb://localhost:27017`
+- `http://localhost:3000`
 
-**macOS:**
-```bash
-brew install mongodb-community
-brew services start mongodb-community
-```
+## How the app behaves on startup
 
-**Linux (Ubuntu):**
-```bash
-sudo apt-get install -y mongodb
-sudo systemctl start mongodb
-```
+When the frontend loads:
 
-Verify:
-```bash
-mongosh localhost:27017
-```
+1. it checks for an existing local token
+2. if none exists, it creates or restores a browser-specific guest session
+3. the user can browse the platform immediately
+4. Google sign-in is required for posting and quick chat write access
 
-#### Option B: MongoDB Atlas (Cloud)
+## Current discussion model
 
-1. Go to [mongodb.com/cloud/atlas](https://mongodb.com/cloud/atlas)
-2. Create free account
-3. Create a new cluster
-4. Get connection string
-5. Add to `.env`:
-   ```
-   MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net/nptel-hub
-   ```
+### Week discussion board
 
-## Verification Checklist
+- everyone can read
+- Google users can post and reply
 
-- [ ] Backend running on `http://localhost:5000`
-- [ ] Frontend running on `http://localhost:3000`
-- [ ] MongoDB connected (check backend logs)
-- [ ] Socket.io initialized (check backend logs)
-- [ ] Can access frontend homepage
-- [ ] API health check: `curl http://localhost:5000/api/health`
+### Common discussion page
 
-## Testing The Application
+- route: `/assignments`
+- shared community-wide feed
+- everyone can read
+- Google users can post and reply
 
-### 1. Create User Account
+### Quick chat
 
-1. Navigate to `http://localhost:3000/register`
-2. Fill in registration form
-3. Submit
-4. Check backend logs for email simulation (development mode)
+- guests can open and read it
+- Google users can send messages
+- chat content is temporary
 
-### 2. Login
+## Material uploads
 
-1. Go to `http://localhost:3000/login`
-2. Use credentials from registration
-3. Should redirect to dashboard
+- the week materials section can show official/extracted PDFs
+- if a week is missing a PDF, Google users can upload a community PDF for admin review
+- guest/demo users see the locked contribution state in the UI
 
-### 3. Test API with Postman
+## Anonymous public username
 
-#### Import Collection
-1. Download provided `nptel-hub-postman.json`
-2. Open Postman → Import → Select JSON file
+Google users may lock in a public username used in discussions/chat.
 
-#### Test Endpoints
-```bash
-# Health Check
-GET http://localhost:5000/api/health
+Rules:
 
-# Get All Subjects
-GET http://localhost:5000/api/courses/subjects
+- once saved, it becomes fixed for that account
+- the user may roll back to the original Google name
+- after rollback, they cannot choose a new anonymous alias again
 
-# Register User
-POST http://localhost:5000/api/auth/register
-{
-  "name": "John Doe",
-  "email": "john@example.com",
-  "password": "password123",
-  "confirmPassword": "password123"
-}
-
-# Login
-POST http://localhost:5000/api/auth/login
-{
-  "email": "john@example.com",
-  "password": "password123"
-}
-```
-
-## Database Seeding (Optional)
-
-Create initial data:
-
-```bash
-cd server
-node scripts/seed.js
-```
-
-This creates sample subjects, courses, and years.
-
-## Troubleshooting
-
-### MongoDB Connection Error
-```
-Error: connect ECONNREFUSED 127.0.0.1:27017
-```
-
-**Solution:**
-- Ensure MongoDB is running
-- Check `MONGODB_URI` in `.env`
-- For local: `mongodb://localhost:27017/nptel-hub`
-- For Atlas: Verify IP whitelist
-
-### Port Already in Use
-```
-Error: listen EADDRINUSE :::5000
-```
-
-**Solution:**
-```bash
-# Find process using port
-lsof -i :5000
-
-# Kill process
-kill -9 <PID>
-
-# Or change port in .env
-PORT=5001
-```
-
-### Socket.io Connection Failed
-```
-WebSocket connection failed
-```
-
-**Solution:**
-- Check `NEXT_PUBLIC_SOCKET_URL` in `.env.local`
-- Ensure backend is running
-- Clear browser cache
-
-### CORS Error
-```
-Access to XMLHttpRequest blocked by CORS policy
-```
-
-**Solution:**
-- Verify `FRONTEND_URL` in backend `.env`
-- Check CORS configuration in `server.js`
-- Ensure credentials: include
-
-### Email Not Sending
-```
-Error: Auth failed
-```
-
-**Solution:**
-- Use Gmail app-specific password (not regular password)
-- Enable 2-factor authentication on Gmail
-- Check ESP restrictions
-
-## Development Workflow
-
-### Running Both Servers
-
-**Terminal 1 - Backend:**
-```bash
-cd server
-npm run dev
-```
-
-**Terminal 2 - Frontend:**
-```bash
-cd client
-npm run dev
-```
-
-### Useful Commands
-
-```bash
-# Backend
-cd server
-
-npm run dev              # Development mode with auto-reload
-npm start               # Production mode
-npm run seed            # Populate database
-
-# Frontend
-cd client
-
-npm run dev             # Development mode
-npm run build           # Production build
-npm run lint            # Check code style
-```
-
-## Building for Production
+## Useful commands
 
 ### Backend
+
 ```bash
 cd server
-npm run build  # If applicable
-NODE_ENV=production npm start
-```
-
-### Frontend
-```bash
-cd client
-npm run build
+npm run dev
 npm start
 ```
 
-### Docker (Recommended)
+### Frontend
+
 ```bash
-docker-compose up -d
+cd client
+npm run dev
+npm run build
+npm run lint
 ```
 
-Ensure `.env` files are properly set for production URLs.
+## Recommended validation before pushing
 
-## Environment Configuration by Stage
-
-### Development
-```env
-NODE_ENV=development
-FRONTEND_URL=http://localhost:3000
-MONGODB_URI=mongodb://localhost:27017/nptel-hub
+```bash
+cd client
+npm run build
 ```
 
-### Production
-```env
-NODE_ENV=production
-FRONTEND_URL=https://nptel-hub.com
-MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/nptel-hub
-JWT_SECRET=very_long_random_secret_key
+Optional backend sanity checks:
+
+```bash
+cd ../server
+node -e "require('./src/controllers/authController'); console.log('auth ok')"
+node -e "require('./src/controllers/yearInstanceController'); console.log('weeks ok')"
+node -e "require('./src/sockets/chat'); console.log('socket ok')"
 ```
 
-## Security Checklist
+## Troubleshooting notes
 
-- [ ] Change JWT_SECRET in production
-- [ ] Use environment variables (never hardcode secrets)
-- [ ] Enable HTTPS in production
-- [ ] Setup rate limiting
-- [ ] Enable CORS only for your domain
-- [ ] Use MongoDB Atlas for production (not local)
-- [ ] Rotate passwords regularly
-- [ ] Setup monitoring and logging
+### Login button missing
 
-## Next Steps
+Usually means the Google client ID is missing on the frontend.
 
-1. **Customize Data** - Add your subjects/courses
-2. **Style Adjustments** - Modify Tailwind configuration
-3. **Feature Enhancement** - Add new components
-4. **Deploy** - Use Docker or cloud platforms
-5. **Monitoring** - Setup error tracking with Sentry
+### Google button appears only after reload
 
-## Support & Resources
+Make sure you restarted the frontend after env changes.
 
-- **Documentation**: See README.md
-- **API Docs**: See server/.env.example
-- **Issues**: Open GitHub issue
-- **Contributing**: See CONTRIBUTING.md
+### PDF endpoint returns errors
 
-## Additional Resources
+Check:
 
-- [Next.js Documentation](https://nextjs.org/docs)
-- [Express.js Guide](https://expressjs.com/)
-- [MongoDB Manual](https://docs.mongodb.com/manual/)
-- [Socket.io Server API](https://socket.io/docs/v4/server-api/)
-- [Tailwind CSS Docs](https://tailwindcss.com/docs)
+- backend is running
+- the target file still exists upstream
+- the backend proxy changes are active after restart
 
----
+### Posting is blocked for guest/demo
 
-**You're all set! 🎉**
+That is expected in the current product rules.
 
-For issues or questions, refer to the main README or open an issue on GitHub.
+## Suggested reading order
+
+1. [README.md](README.md)
+2. [QUICK_START.md](QUICK_START.md)
+3. [CONTRIBUTING.md](CONTRIBUTING.md)

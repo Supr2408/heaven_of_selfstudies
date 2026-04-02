@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   AlertCircle,
   ChevronDown,
@@ -11,8 +12,10 @@ import {
   MessageCircle,
   Send,
   StickyNote,
+  Trash2,
 } from 'lucide-react';
 import { resourceAPI } from '@/lib/api';
+import { getPublicUserName, isGoogleUser } from '@/lib/user';
 import useStore from '@/store/useStore';
 
 const CATEGORY_META = {
@@ -71,6 +74,7 @@ const formatRelativeTime = (value) => {
 };
 
 export default function WeekDiscussions({ weekId, weekNumber, weekTitle }) {
+  const router = useRouter();
   const { user, isAuthenticated } = useStore((state) => ({
     user: state.user,
     isAuthenticated: state.isAuthenticated,
@@ -84,8 +88,10 @@ export default function WeekDiscussions({ weekId, weekNumber, weekTitle }) {
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [posting, setPosting] = useState(false);
   const [replying, setReplying] = useState({});
+  const [deleting, setDeleting] = useState({});
   const [voting, setVoting] = useState({});
   const [replyText, setReplyText] = useState({});
+  const [feedback, setFeedback] = useState('');
   const [newPost, setNewPost] = useState({
     type: 'discussion',
     title: '',
@@ -94,6 +100,8 @@ export default function WeekDiscussions({ weekId, weekNumber, weekTitle }) {
   });
 
   const currentUserId = useMemo(() => user?._id || user?.id || '', [user]);
+  const canPostAsUser = isGoogleUser(user);
+  const hasConnectedWeek = Boolean(weekId);
   const selectedCategoryMeta = CATEGORY_META[newPost.type];
 
   const filteredResources = useMemo(() => {
@@ -107,6 +115,7 @@ export default function WeekDiscussions({ weekId, weekNumber, weekTitle }) {
     try {
       setLoading(true);
       setError('');
+      setFeedback('');
       const response = await resourceAPI.getResources(weekId, {
         limit: 100,
         sortBy: 'createdAt',
@@ -126,7 +135,7 @@ export default function WeekDiscussions({ weekId, weekNumber, weekTitle }) {
     fetchResources();
   }, [fetchResources]);
 
-  const ensureAuthenticated = () => {
+  const ensureSignedIn = () => {
     if (!isAuthenticated) {
       alert('Please log in to post or reply.');
       return false;
@@ -134,8 +143,29 @@ export default function WeekDiscussions({ weekId, weekNumber, weekTitle }) {
     return true;
   };
 
+  const ensureCanPost = () => {
+    if (!hasConnectedWeek) {
+      const message =
+        'This discussion board is not connected to a real week yet. Open the week from the dashboard and try again.';
+      setError(message);
+      alert(message);
+      return false;
+    }
+
+    if (!ensureSignedIn()) {
+      return false;
+    }
+
+    if (!canPostAsUser) {
+      alert('Please sign in with Google to post or reply on the discussion board.');
+      router.push('/login');
+      return false;
+    }
+    return true;
+  };
+
   const handleCreatePost = async () => {
-    if (!ensureAuthenticated() || !weekId) return;
+    if (!ensureCanPost() || !weekId) return;
 
     const title = newPost.title.trim();
     const description = newPost.content.trim();
@@ -158,7 +188,8 @@ export default function WeekDiscussions({ weekId, weekNumber, weekTitle }) {
 
     try {
       setPosting(true);
-      await resourceAPI.createResource({
+      setFeedback('');
+      const response = await resourceAPI.createResource({
         weekId,
         title,
         description,
@@ -166,19 +197,29 @@ export default function WeekDiscussions({ weekId, weekNumber, weekTitle }) {
         url: url || undefined,
         fileType: url ? 'link' : undefined,
       });
+      const createdResource = response?.data;
+      if (createdResource?._id) {
+        setResources((current) => [
+          createdResource,
+          ...current.filter((item) => item._id !== createdResource._id),
+        ]);
+      }
       setNewPost({ type: 'discussion', title: '', content: '', url: '' });
       setShowComposer(false);
       setSelectedFilter('all');
-      fetchResources();
+      setFeedback('Post published successfully.');
+      await fetchResources();
     } catch (err) {
-      alert(err?.message || 'Unable to create this post right now.');
+      const message = err?.message || 'Unable to create this post right now.';
+      setFeedback('');
+      alert(message);
     } finally {
       setPosting(false);
     }
   };
 
   const handleReply = async (resourceId) => {
-    if (!ensureAuthenticated()) return;
+    if (!ensureCanPost()) return;
 
     const text = (replyText[resourceId] || '').trim();
     if (!text) {
@@ -188,18 +229,30 @@ export default function WeekDiscussions({ weekId, weekNumber, weekTitle }) {
 
     try {
       setReplying((state) => ({ ...state, [resourceId]: true }));
-      await resourceAPI.addComment(resourceId, text);
+      setFeedback('');
+      const response = await resourceAPI.addComment(resourceId, text);
       setReplyText((state) => ({ ...state, [resourceId]: '' }));
-      fetchResources();
+      const comments = response?.data;
+      if (Array.isArray(comments)) {
+        setResources((current) =>
+          current.map((resource) =>
+            resource._id === resourceId ? { ...resource, comments } : resource
+          )
+        );
+      }
+      setFeedback('Reply posted successfully.');
+      await fetchResources();
     } catch (err) {
-      alert(err?.message || 'Unable to post your reply right now.');
+      const message = err?.message || 'Unable to post your reply right now.';
+      setFeedback('');
+      alert(message);
     } finally {
       setReplying((state) => ({ ...state, [resourceId]: false }));
     }
   };
 
   const handleVote = async (resourceId) => {
-    if (!ensureAuthenticated()) return;
+    if (!ensureSignedIn()) return;
 
     try {
       setVoting((state) => ({ ...state, [resourceId]: true }));
@@ -209,6 +262,26 @@ export default function WeekDiscussions({ weekId, weekNumber, weekTitle }) {
       alert(err?.message || 'Unable to register your vote right now.');
     } finally {
       setVoting((state) => ({ ...state, [resourceId]: false }));
+    }
+  };
+
+  const handleDeletePost = async (resourceId) => {
+    const confirmed = window.confirm('Delete this post permanently?');
+    if (!confirmed) return;
+
+    try {
+      setDeleting((state) => ({ ...state, [resourceId]: true }));
+      setFeedback('');
+      await resourceAPI.deleteResource(resourceId);
+      setResources((current) => current.filter((resource) => resource._id !== resourceId));
+      if (expandedThread === resourceId) {
+        setExpandedThread(null);
+      }
+      setFeedback('Post deleted successfully.');
+    } catch (err) {
+      alert(err?.message || 'Unable to delete this post right now.');
+    } finally {
+      setDeleting((state) => ({ ...state, [resourceId]: false }));
     }
   };
 
@@ -230,12 +303,52 @@ export default function WeekDiscussions({ weekId, weekNumber, weekTitle }) {
         </div>
 
         <button
-          onClick={() => setShowComposer((state) => !state)}
+          onClick={() => {
+            if (!hasConnectedWeek) {
+              const message =
+                'This discussion board is not connected to a real week yet. Open the week from the dashboard to post.';
+              setError(message);
+              return;
+            }
+
+            if (canPostAsUser) {
+              setShowComposer((state) => !state);
+              return;
+            }
+
+            router.push('/login');
+          }}
           className="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
         >
-          {showComposer ? 'Close composer' : 'Add a community post'}
+          {!hasConnectedWeek
+            ? 'Open a live week to post'
+            : canPostAsUser
+            ? showComposer
+              ? 'Close composer'
+              : 'Add a community post'
+            : 'Continue with Google to post'}
         </button>
       </div>
+
+      {feedback ? (
+        <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          {feedback}
+        </div>
+      ) : null}
+
+      {!canPostAsUser ? (
+        <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+          Guest users can read everything here. Sign in with Google to publish posts and reply to
+          threads.
+        </div>
+      ) : null}
+
+      {canPostAsUser && !hasConnectedWeek ? (
+        <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          This page is not attached to a saved week yet, so posting is disabled here. Open the week
+          from the dashboard to use the live discussion board.
+        </div>
+      ) : null}
 
       {error ? (
         <div className="mt-5 flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -353,6 +466,8 @@ export default function WeekDiscussions({ weekId, weekNumber, weekTitle }) {
             const CategoryIcon = category.icon;
             const replies = resource.comments || [];
             const isExpanded = expandedThread === resource._id;
+            const isOwner =
+              String(resource.userId?._id || resource.userId) === String(currentUserId);
             const hasVoted = currentUserId
               ? (resource.upvotes || []).some((id) => String(id) === String(currentUserId))
               : false;
@@ -366,7 +481,7 @@ export default function WeekDiscussions({ weekId, weekNumber, weekTitle }) {
                   <div className="flex gap-4">
                     <div className="flex flex-col items-center gap-2">
                       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
-                        {getInitials(resource.userId?.name || 'Learner')}
+                        {getInitials(getPublicUserName(resource.userId))}
                       </div>
                       <button
                         onClick={() => handleVote(resource._id)}
@@ -383,17 +498,35 @@ export default function WeekDiscussions({ weekId, weekNumber, weekTitle }) {
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-slate-900">
-                          {resource.userId?.name || 'Community member'}
-                        </span>
-                        <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${category.accent}`}>
-                          <CategoryIcon size={12} />
-                          {category.label}
-                        </span>
-                        <span className="text-sm text-slate-500">
-                          {formatRelativeTime(resource.createdAt)}
-                        </span>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-slate-900">
+                            {getPublicUserName(resource.userId) || 'Community member'}
+                          </span>
+                          <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${category.accent}`}>
+                            <CategoryIcon size={12} />
+                            {category.label}
+                          </span>
+                          <span className="text-sm text-slate-500">
+                            {formatRelativeTime(resource.createdAt)}
+                          </span>
+                        </div>
+
+                        {isOwner ? (
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePost(resource._id)}
+                            disabled={deleting[resource._id]}
+                            className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {deleting[resource._id] ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={14} />
+                            )}
+                            Delete
+                          </button>
+                        ) : null}
                       </div>
 
                       <h3 className="mt-3 text-xl font-semibold text-slate-900">{resource.title}</h3>
@@ -435,7 +568,7 @@ export default function WeekDiscussions({ weekId, weekNumber, weekTitle }) {
                           <div key={reply._id} className="rounded-2xl border border-slate-200 bg-white p-4">
                             <div className="flex items-center gap-2 text-sm">
                               <span className="font-semibold text-slate-900">
-                                {reply.userId?.name || 'Learner'}
+                                {getPublicUserName(reply.userId)}
                               </span>
                               <span className="text-slate-500">
                                 {formatRelativeTime(reply.createdAt)}
@@ -457,12 +590,17 @@ export default function WeekDiscussions({ weekId, weekNumber, weekTitle }) {
                         onChange={(e) =>
                           setReplyText((state) => ({ ...state, [resource._id]: e.target.value }))
                         }
-                        placeholder="Add a reply..."
+                        placeholder={
+                          canPostAsUser
+                            ? 'Add a reply...'
+                            : 'Sign in with Google to reply to this thread'
+                        }
+                        disabled={!canPostAsUser}
                         className="flex-1 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       />
                       <button
                         onClick={() => handleReply(resource._id)}
-                        disabled={replying[resource._id]}
+                        disabled={replying[resource._id] || !canPostAsUser}
                         className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
                       >
                         {replying[resource._id] ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}

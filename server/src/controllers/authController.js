@@ -1,240 +1,214 @@
+const axios = require('axios');
 const User = require('../models/User');
-const { generateToken, generateHttpOnlyCookie, verifyToken } = require('../utils/jwtSecure');
-const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
+const { generateToken, generateHttpOnlyCookie } = require('../utils/jwtSecure');
 const { sanitizeInput } = require('../utils/validation');
 const { AppError, catchAsync } = require('../utils/errorHandler');
-const crypto = require('crypto');
+
+const GOOGLE_ONLY_AUTH_MESSAGE =
+  'Google sign-in is the only supported authentication method for NPTEL Hub.';
+
+const createGoogleOnlyAuthError = () => new AppError(GOOGLE_ONLY_AUTH_MESSAGE, 403);
+
+const createSessionResponse = (res, user, message) => {
+  const token = generateToken(user._id);
+  const { value: cookieValue, options: cookieOptions } = generateHttpOnlyCookie(token);
+  res.cookie('token', cookieValue, cookieOptions);
+
+  return res.status(200).json({
+    success: true,
+    message,
+    token,
+    user: user.toJSON(),
+  });
+};
+
+const buildPublicName = (user) => user.displayName || user.name || 'Learner';
+
+const normalizeGuestCode = (input) =>
+  String(input || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .slice(0, 20);
+
+const buildStableGuestName = (guestCode, prefix = 'Guest') => {
+  const compactCode = normalizeGuestCode(guestCode) || '000000';
+  const suffix = compactCode.slice(-6).toUpperCase().padStart(6, '0');
+  return `${prefix}-${suffix}`;
+};
+
+const verifyGoogleCredential = async (credential) => {
+  if (!credential) {
+    throw new AppError('Google credential is required', 400);
+  }
+
+  const response = await axios.get('https://oauth2.googleapis.com/tokeninfo', {
+    params: { id_token: credential },
+    timeout: 10000,
+  });
+
+  const payload = response.data || {};
+  const expectedAudience = process.env.GOOGLE_CLIENT_ID;
+  const emailVerified =
+    payload.email_verified === true || payload.email_verified === 'true';
+
+  if (expectedAudience && payload.aud !== expectedAudience) {
+    throw new AppError('Google client ID mismatch', 401);
+  }
+
+  if (!payload.email || !emailVerified) {
+    throw new AppError('Google account email is not verified', 401);
+  }
+
+  return payload;
+};
 
 /**
  * Register a new user
  */
-exports.register = catchAsync(async (req, res, next) => {
-  console.log('📝 Register Request:', { body: req.body }); // Debug log
-  
-  const { name, email, password } = req.body;
-
-  // Validation
-  if (!name || !email || !password) {
-    console.log('❌ Validation failed - missing fields');
-    return next(new AppError('Please provide all fields', 400));
-  }
-
-  if (password.length < 6) {
-    console.log('❌ Validation failed - password too short');
-    return next(new AppError('Password must be at least 6 characters', 400));
-  }
-
-  try {
-    // Check if user already exists
-    let user = await User.findOne({ email });
-    if (user) {
-      console.log('❌ Email already registered:', email);
-      return next(new AppError('Email already registered', 409));
-    }
-
-    console.log('✅ Email is available, creating user...');
-    
-    // Create user
-    user = await User.create({
-      name: sanitizeInput(name),
-      email: email.toLowerCase(),
-      password,
-    });
-
-    console.log('✅ User created successfully:', user._id);
-
-    // Generate verification token
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-    user.verificationToken = verificationToken;
-    await user.save();
-
-    console.log('✅ Verification token generated');
-
-    // Send verification email
-    const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
-    try {
-      await sendVerificationEmail(email, verificationLink);
-      console.log('✅ Verification email sent');
-    } catch (error) {
-      console.error('⚠️  Email sending failed (non-critical):', error.message);
-    }
-
-    // Generate JWT
-    const token = generateToken(user._id);
-
-    // Get secure HttpOnly cookie options
-    const { value: cookieValue, options: cookieOptions } = generateHttpOnlyCookie(token);
-    res.cookie('token', cookieValue, cookieOptions);
-
-    console.log('✅ Registration complete, token generated');
-
-    res.status(201).json({
-      success: true,
-      message: 'User registered successfully. Please verify your email.',
-      token: token,
-      user: user.toJSON(),
-    });
-  } catch (dbError) {
-    console.error('💥 Database Error:', dbError.message);
-    console.error('💥 Error Code:', dbError.code);
-    console.error('💥 Full Error:', dbError);
-    next(dbError);
-  }
-});
+exports.register = catchAsync(async (req, res, next) => next(createGoogleOnlyAuthError()));
 
 /**
  * Login user
  */
-exports.login = catchAsync(async (req, res, next) => {
-  const { email, password } = req.body;
+exports.login = catchAsync(async (req, res, next) => next(createGoogleOnlyAuthError()));
 
-  // Validation
-  if (!email || !password) {
-    return next(new AppError('Please provide email and password', 400));
-  }
+/**
+ * Create or restore a guest session
+ */
+exports.guestLogin = catchAsync(async (req, res) => {
+  const guestCode = normalizeGuestCode(req.body?.guestCode) || `${Date.now()}`;
+  const guestEmail = `guest.${guestCode}@nptelhub.com`;
+  const guestName = buildStableGuestName(guestCode, 'Guest');
 
-  // Check user and get password
-  const user = await User.findOne({ email }).select('+password');
+  let user = await User.findOne({ email: guestEmail });
+
   if (!user) {
-    return next(new AppError('Invalid email or password', 401));
+    user = await User.create({
+      name: guestName,
+      displayName: guestName,
+      email: guestEmail,
+      authProvider: 'guest',
+      isVerified: true,
+      bio: 'Read-only guest access',
+    });
+  } else if (user.authProvider !== 'guest') {
+    user.authProvider = 'guest';
+    user.name = guestName;
+    user.displayName = guestName;
+    user.isVerified = true;
+    await user.save();
+  } else if (user.name !== guestName || user.displayName !== guestName) {
+    user.name = guestName;
+    user.displayName = guestName;
+    await user.save();
   }
 
-  // Compare password
-  const isPasswordValid = await user.matchPassword(password);
-  if (!isPasswordValid) {
-    return next(new AppError('Invalid email or password', 401));
-  }
+  createSessionResponse(res, user, 'Guest session started');
+});
 
-  // Generate JWT
-  const token = generateToken(user._id);
+/**
+ * Login or sign up with Google
+ */
+exports.googleLogin = catchAsync(async (req, res) => {
+  const { credential } = req.body;
+  const payload = await verifyGoogleCredential(credential);
+  const email = payload.email.toLowerCase();
 
-  // Get secure HttpOnly cookie options
-  const { value: cookieValue, options: cookieOptions } = generateHttpOnlyCookie(token);
-  res.cookie('token', cookieValue, cookieOptions);
-
-  res.status(200).json({
-    success: true,
-    message: 'Logged in successfully',
-    token: token,
-    user: user.toJSON(),
+  let user = await User.findOne({
+    $or: [{ email }, { googleId: payload.sub }],
   });
+
+  if (!user) {
+    user = await User.create({
+      name: sanitizeInput(payload.name || email.split('@')[0] || 'NPTEL Learner'),
+      email,
+      googleId: payload.sub,
+      authProvider: 'google',
+      avatar: payload.picture || null,
+      isVerified: true,
+    });
+  } else {
+    user.name = sanitizeInput(payload.name || user.name);
+    user.email = email;
+    user.googleId = payload.sub;
+    user.authProvider = 'google';
+    user.isVerified = true;
+
+    if (payload.picture) {
+      user.avatar = payload.picture;
+    }
+
+    await user.save();
+  }
+
+  createSessionResponse(res, user, 'Logged in with Google successfully');
+});
+
+/**
+ * Development-only demo login
+ */
+exports.devLogin = catchAsync(async (req, res, next) => {
+  if (process.env.NODE_ENV === 'production') {
+    return next(new AppError('Demo login is not available in production.', 404));
+  }
+
+  const guestCode = normalizeGuestCode(req.body?.guestCode);
+  const demoEmail = guestCode
+    ? `demo.${guestCode}@nptelhub.com`
+    : process.env.DEMO_USER_EMAIL || 'demo@nptelhub.com';
+  const demoName = guestCode
+    ? buildStableGuestName(guestCode, 'Guest')
+    : process.env.DEMO_USER_NAME || 'Demo Learner';
+
+  const safeDemoName = sanitizeInput(demoName);
+  let user = await User.findOne({ email: demoEmail.toLowerCase() });
+
+  if (!user) {
+    user = await User.create({
+      name: safeDemoName,
+      displayName: safeDemoName,
+      email: demoEmail.toLowerCase(),
+      authProvider: 'demo',
+      isVerified: true,
+      avatar: null,
+      bio: 'Local development demo account',
+    });
+  } else {
+    user.name = safeDemoName;
+    user.displayName = safeDemoName;
+    user.authProvider = 'demo';
+    user.isVerified = true;
+    await user.save();
+  }
+
+  createSessionResponse(res, user, 'Logged in with demo account successfully');
 });
 
 /**
  * Verify email
  */
-exports.verifyEmail = catchAsync(async (req, res, next) => {
-  const { token } = req.body;
-
-  if (!token) {
-    return next(new AppError('Verification token is required', 400));
-  }
-
-  const user = await User.findOne({ verificationToken: token });
-  if (!user) {
-    return next(new AppError('Invalid or expired verification token', 400));
-  }
-
-  user.isVerified = true;
-  user.verificationToken = undefined;
-  await user.save();
-
-  res.status(200).json({
-    success: true,
-    message: 'Email verified successfully',
-  });
-});
+exports.verifyEmail = catchAsync(async (req, res, next) => next(createGoogleOnlyAuthError()));
 
 /**
  * Forgot password
  */
-exports.forgotPassword = catchAsync(async (req, res, next) => {
-  const { email } = req.body;
-
-  if (!email) {
-    return next(new AppError('Please provide an email', 400));
-  }
-
-  const user = await User.findOne({ email });
-  if (!user) {
-    return next(new AppError('User not found', 404));
-  }
-
-  // Generate reset token
-  const resetToken = crypto.randomBytes(32).toString('hex');
-  user.resetPasswordToken = resetToken;
-  user.resetPasswordExpire = Date.now() + 60 * 60 * 1000; // 1 hour
-  await user.save();
-
-  // Send reset email
-  const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
-  try {
-    await sendPasswordResetEmail(email, resetLink);
-  } catch (error) {
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpire = undefined;
-    await user.save();
-    console.error('Email sending failed:', error);
-  }
-
-  res.status(200).json({
-    success: true,
-    message: 'Password reset link sent to email',
-  });
-});
+exports.forgotPassword = catchAsync(async (req, res, next) => next(createGoogleOnlyAuthError()));
 
 /**
  * Reset password
  */
-exports.resetPassword = catchAsync(async (req, res, next) => {
-  const { token, password, confirmPassword } = req.body;
-
-  if (!token || !password || !confirmPassword) {
-    return next(new AppError('Please provide all fields', 400));
-  }
-
-  if (password !== confirmPassword) {
-    return next(new AppError('Passwords do not match', 400));
-  }
-
-  const user = await User.findOne({
-    resetPasswordToken: token,
-    resetPasswordExpire: { $gt: Date.now() },
-  });
-
-  if (!user) {
-    return next(new AppError('Invalid or expired reset token', 400));
-  }
-
-  user.password = password;
-  user.resetPasswordToken = undefined;
-  user.resetPasswordExpire = undefined;
-  await user.save();
-
-  // Generate new JWT
-  const jwtToken = generateToken(user._id);
-
-  // Get secure HttpOnly cookie options
-  const { value: cookieValue, options: cookieOptions } = generateHttpOnlyCookie(jwtToken);
-  res.cookie('token', cookieValue, cookieOptions);
-
-  res.status(200).json({
-    success: true,
-    message: 'Password reset successfully',
-    token: jwtToken,
-  });
-});
+exports.resetPassword = catchAsync(async (req, res, next) => next(createGoogleOnlyAuthError()));
 
 /**
  * Logout user
  */
 exports.logout = (req, res) => {
-  // Clear token cookie with same secure options
   res.clearCookie('token', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
   });
+
   res.status(200).json({
     success: true,
     message: 'Logged out successfully',
@@ -260,7 +234,7 @@ exports.getCurrentUser = catchAsync(async (req, res, next) => {
  * Update user profile
  */
 exports.updateProfile = catchAsync(async (req, res, next) => {
-  const { name, bio, avatar } = req.body;
+  const { name, displayName, bio, avatar } = req.body;
 
   const user = await User.findById(req.userId);
   if (!user) {
@@ -268,6 +242,30 @@ exports.updateProfile = catchAsync(async (req, res, next) => {
   }
 
   if (name) user.name = sanitizeInput(name);
+  if (typeof displayName === 'string') {
+    const normalizedDisplayName = sanitizeInput(displayName).slice(0, 40).trim();
+    const isRollingBackToOriginalName = normalizedDisplayName.length === 0;
+
+    if (user.authProvider === 'google') {
+      if (!isRollingBackToOriginalName && user.displayNameLocked) {
+        return next(
+          new AppError(
+            'Your anonymous public username is already fixed. You can roll back to your original Google name, but you cannot choose a different anonymous name now.',
+            400
+          )
+        );
+      }
+
+      if (!isRollingBackToOriginalName) {
+        user.displayName = normalizedDisplayName;
+        user.displayNameLocked = true;
+      } else {
+        user.displayName = '';
+      }
+    } else {
+      user.displayName = normalizedDisplayName;
+    }
+  }
   if (bio) user.bio = sanitizeInput(bio);
   if (avatar) user.avatar = avatar;
 
@@ -276,39 +274,14 @@ exports.updateProfile = catchAsync(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: 'Profile updated successfully',
-    user: user.toJSON(),
+    user: {
+      ...user.toJSON(),
+      publicName: buildPublicName(user),
+    },
   });
 });
 
 /**
  * Change password
  */
-exports.changePassword = catchAsync(async (req, res, next) => {
-  const { oldPassword, newPassword, confirmPassword } = req.body;
-
-  if (!oldPassword || !newPassword || !confirmPassword) {
-    return next(new AppError('Please provide all fields', 400));
-  }
-
-  if (newPassword !== confirmPassword) {
-    return next(new AppError('New passwords do not match', 400));
-  }
-
-  const user = await User.findById(req.userId).select('+password');
-  if (!user) {
-    return next(new AppError('User not found', 404));
-  }
-
-  const isPasswordValid = await user.matchPassword(oldPassword);
-  if (!isPasswordValid) {
-    return next(new AppError('Current password is incorrect', 401));
-  }
-
-  user.password = newPassword;
-  await user.save();
-
-  res.status(200).json({
-    success: true,
-    message: 'Password changed successfully',
-  });
-});
+exports.changePassword = catchAsync(async (req, res, next) => next(createGoogleOnlyAuthError()));

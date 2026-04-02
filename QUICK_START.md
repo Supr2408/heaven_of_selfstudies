@@ -1,182 +1,153 @@
-# NPTEL Hub - Quick Start Guide
+# Quick Start
 
-## ✅ Installation Complete!
+This is the fastest path to run the current NPTEL Hub app locally.
 
-Your NPTEL Hub project is now ready to run. Here's what was configured:
+## Prerequisites
 
-### 📋 Configuration Summary
+- Node.js 18+
+- npm 9+
+- MongoDB local or MongoDB Atlas
 
-**Backend (.env)**
-```
-✓ MongoDB URI: Connected to Atlas (sustainable_commerce database)
-✓ JWT Secret: Configured
-✓ Frontend URL: http://localhost:3000
-✓ Port: 5000
-```
+## 1. Install dependencies
 
-**Frontend (.env.local)**
-```
-✓ API URL: http://localhost:5000/api
-✓ Socket.io URL: http://localhost:5000
-```
-
-### 📦 Dependencies Installed
-
-**Backend (server/)**
-- ✓ Express.js 4.18+
-- ✓ MongoDB & Mongoose
-- ✓ Socket.io 4.5+
-- ✓ JWT & Bcrypt
-- ✓ Rate Limiting
-- ✓ CORS & Cookie Parser
-- ✓ All security middleware
-
-**Frontend (client/)**
-- ✓ Next.js 14+
-- ✓ React 18+
-- ✓ Tailwind CSS
-- ✓ Socket.io Client
-- ✓ Zustand (State Management)
-- ✓ Lucide React Icons
-
-### 🚀 How to Run
-
-#### Option 1: Using Batch Scripts (Windows)
 ```bash
-# Terminal 1 - Start Backend
-start-backend.bat
+cd server
+npm install
 
-# Terminal 2 - Start Frontend
-start-frontend.bat
+cd ../client
+npm install
 ```
 
-#### Option 2: Manual Commands
+## 2. Create env files
+
 ```bash
-# Terminal 1 - Backend
+cd server
+cp .env.example .env
+
+cd ../client
+cp .env.local.example .env.local
+```
+
+If you are on Windows without `cp`, copy the files manually.
+
+## 3. Fill the required values
+
+### `server/.env`
+
+Required:
+
+```env
+PORT=5000
+NODE_ENV=development
+MONGODB_URI=your_mongodb_connection_string
+JWT_SECRET=your_long_random_secret
+FRONTEND_URL=http://localhost:3000
+GOOGLE_CLIENT_ID=your_google_oauth_client_id
+```
+
+Optional:
+
+```env
+DEMO_USER_EMAIL=demo@nptelhub.com
+DEMO_USER_NAME=Demo Learner
+```
+
+### `client/.env.local`
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:5000/api
+NEXT_PUBLIC_SOCKET_URL=http://localhost:5000
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=your_google_oauth_client_id
+```
+
+## 4. Run the backend
+
+```bash
 cd server
 npm run dev
-# Runs on http://localhost:5000
+```
 
-# Terminal 2 - Frontend
+Expected:
+
+- server on `http://localhost:5000`
+- MongoDB connected
+
+## 5. Run the frontend
+
+```bash
 cd client
 npm run dev
-# Runs on http://localhost:3000
 ```
 
-#### Option 3: PowerShell
-```powershell
-# Terminal 1
-cd "d:\heavens for self studies\nptel-hub\server"
-npm run dev
+Expected:
 
-# Terminal 2
-cd "d:\heavens for self studies\nptel-hub\client"
-npm run dev
-```
+- app on `http://localhost:3000`
 
-### 🌐 Access Points
+## 6. Open the app
 
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:5000
-- **API Health Check**: http://localhost:5000/api/health
-- **MongoDB**: Connected via Atlas
+Use:
 
-### 🔍 Test the Connection
+- `http://localhost:3000`
 
-#### Test Backend
+What happens now:
+
+- a guest session is created automatically
+- guest users can browse the platform immediately
+- Google sign-in is needed for posting/replying/chat
+- demo login is available locally as a fallback if enabled by environment and backend mode
+
+## 7. Recommended smoke test
+
+### Backend health
+
 ```bash
 curl http://localhost:5000/api/health
-# Expected response: {"success":true,"message":"Server is running"}
 ```
 
-#### Test Database Connection
-Check backend logs for:
-```
-MongoDB connected
-Socket.io initialized
-Server running on port 5000
-```
-
-### 📝 First Steps
-
-1. **Start Backend**: `npm run dev` in `server/` folder
-2. **Start Frontend**: `npm run dev` in `client/` folder
-3. **Wait for**: Both servers to show "ready" messages
-4. **Open Browser**: http://localhost:3000
-5. **Register**: Create a new account
-6. **Explore**: Check out the dashboard
-
-### 🛠️ Troubleshooting
-
-**MongoDB Connection Error**
-- Ensure your MongoDB Atlas IP whitelist includes your current IP
-- Check MONGODB_URI in `server/.env`
-- Verify SSL is enabled in connection string
-
-**Port Already in Use**
-```powershell
-# Find process on port 5000
-Get-NetTCPConnection -LocalPort 5000 | Select-Object OwningProcess
-
-# Kill process (replace PID with number from above)
-Stop-Process -Id <PID> -Force
-```
-
-**Module Not Found**
-```bash
-# Reinstall dependencies
-cd server && rm -r node_modules package-lock.json && npm install
-cd client && rm -r node_modules package-lock.json && npm install
-```
-
-**Socket.io Connection Failed**
-- Check both servers are running
-- Check `NEXT_PUBLIC_SOCKET_URL` in `client/.env.local`
-- Clear browser cache
-
-### 📚 Documentation
-
-- **Setup Guide**: [SETUP.md](../SETUP.md)
-- **Architecture**: [ARCHITECTURE.md](../ARCHITECTURE.md)
-- **Contributing**: [CONTRIBUTING.md](../CONTRIBUTING.md)
-- **README**: [README.md](../README.md)
-
-### 💡 Useful Commands
+### Frontend build
 
 ```bash
-# Development
-npm run dev              # Start with auto-reload
-
-# Production Build
+cd client
 npm run build
-npm start
-
-# Database Seeding (Optional - if script exists)
-node scripts/seed.js
-
-# Check for vulnerabilities
-npm audit
-npm audit fix
-
-# Format code
-npm run lint
 ```
 
-### ✅ Verification Checklist
+## Common first-time checks
 
-- [ ] Backend running on port 5000
-- [ ] Frontend running on port 3000
-- [ ] MongoDB Atlas connection successful
-- [ ] Socket.io connected
-- [ ] Can register/login on frontend
-- [ ] API health check works
+- `Google button not visible`
+  - confirm `NEXT_PUBLIC_GOOGLE_CLIENT_ID` is set
+  - restart the frontend after changing env
 
-### 🎉 You're All Set!
+- `Google login fails`
+  - confirm `GOOGLE_CLIENT_ID` matches the frontend client ID
+  - confirm `http://localhost:3000` is an allowed origin in Google Cloud
 
-Your NPTEL Hub platform is ready for development and testing. Start the servers and begin building!
+- `Guest login exists but posting is blocked`
+  - this is expected
+  - guest/demo can browse and read, but write actions need Google sign-in
 
-**Questions?** Check the documentation files or review the code comments.
+- `PDF material fails to load`
+  - some externally hosted files can still depend on upstream availability
+  - restart backend first if you changed proxy logic
 
----
+## Main local routes
 
-**🚀 Happy Coding!**
+- `/dashboard`
+- `/dashboard/week?weekId=...`
+- `/assignments`
+- `/login`
+
+## Before pushing
+
+Run:
+
+```bash
+cd client
+npm run build
+```
+
+If you also want a quick backend sanity check:
+
+```bash
+cd ../server
+node -e "require('./src/controllers/authController'); console.log('ok')"
+```

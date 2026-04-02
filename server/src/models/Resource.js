@@ -83,6 +83,10 @@ const resourceSchema = new mongoose.Schema(
         reportedAt: Date,
       },
     ],
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
     tags: [
       {
         type: String,

@@ -318,8 +318,8 @@ export default function StudyPdfViewer({ src, storageKey, title }) {
 
         <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => goToPage(currentPage - 1)}
             disabled={currentPage <= 1}
+            onClick={() => goToPage(currentPage - 1)}
             className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ChevronLeft size={15} />
@@ -331,8 +331,8 @@ export default function StudyPdfViewer({ src, storageKey, title }) {
           </div>
 
           <button
-            onClick={() => goToPage(currentPage + 1)}
             disabled={currentPage >= numPages}
+            onClick={() => goToPage(currentPage + 1)}
             className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Next

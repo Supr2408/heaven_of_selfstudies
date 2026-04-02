@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, Home, BookOpen, FileText } from 'lucide-react';
+import { ChevronDown, ChevronRight, Home, BookOpen, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { courseAPI, yearInstanceAPI } from '@/lib/api';
@@ -261,11 +261,11 @@ export default function Sidebar() {
           <div className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer">
             {sidebarOpen && (
               <div className="flex items-center gap-2 flex-1">
-                <FileText size={18} />
-                <span className="text-sm font-medium">Solutions</span>
+                <MessageSquare size={18} />
+                <span className="text-sm font-medium">Discussion</span>
               </div>
             )}
-            {!sidebarOpen && <FileText size={18} />}
+            {!sidebarOpen && <MessageSquare size={18} />}
           </div>
         </Link>
 

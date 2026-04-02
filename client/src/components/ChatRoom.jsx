@@ -9,6 +9,7 @@ import {
   reportMessage,
   sendMessage as emitMessage,
 } from '@/lib/socket';
+import { getPublicUserName, isGoogleUser } from '@/lib/user';
 import useStore from '@/store/useStore';
 
 const CHAT_RETENTION_MS = 30 * 60 * 1000;
@@ -72,6 +73,7 @@ export default function ChatRoom({ weekId, courseId, year, weekNumber, onOpenDis
   const [timeMarker, setTimeMarker] = useState(() => Date.now());
   const [showEntryPrompt, setShowEntryPrompt] = useState(true);
   const messagesEndRef = useRef(null);
+  const canUseQuickChat = isGoogleUser(user);
 
   const roomId = `${courseId}_${year}_${weekId}`;
 
@@ -95,7 +97,7 @@ export default function ChatRoom({ weekId, courseId, year, weekNumber, onOpenDis
     if (!isAuthenticated || !user?._id || !weekId) return;
     if (showEntryPrompt) return;
 
-    const socket = initializeSocket(user.name || 'Learner');
+    const socket = initializeSocket(getPublicUserName(user));
     const pruneMessages = (nextMessages) => {
       const cutoff = Date.now() - CHAT_RETENTION_MS;
       return nextMessages.filter((message) => {
@@ -229,7 +231,7 @@ export default function ChatRoom({ weekId, courseId, year, weekNumber, onOpenDis
 
   const handleSend = (event) => {
     event.preventDefault();
-    if (!inputValue.trim() || cooldownSeconds > 0 || !isAuthenticated) return;
+    if (!inputValue.trim() || cooldownSeconds > 0 || !isAuthenticated || !canUseQuickChat) return;
 
     if (containsBlockedChatContent(inputValue)) {
       setStatusMessage(
@@ -268,6 +270,11 @@ export default function ChatRoom({ weekId, courseId, year, weekNumber, onOpenDis
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 Quick chat is only for short live discussion. For notes, links, solutions, or anything that should stay saved, please use the discussion board first and then come here if you still need instant help.
               </p>
+              {!canUseQuickChat ? (
+                <p className="mt-3 text-sm font-medium text-blue-700">
+                  Guest access is read-only here. Sign in with Google if you want to send messages.
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -286,7 +293,7 @@ export default function ChatRoom({ weekId, courseId, year, weekNumber, onOpenDis
               onClick={() => setShowEntryPrompt(false)}
               className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
             >
-              Continue to quick chat
+              {canUseQuickChat ? 'Continue to quick chat' : 'View quick chat'}
             </button>
           </div>
         </div>
@@ -326,20 +333,20 @@ export default function ChatRoom({ weekId, courseId, year, weekNumber, onOpenDis
             {visibleMessages.map((message) => (
               <div key={message._id} className="group flex gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
-                  {getInitials(message.userId?.name || 'Learner')}
+                  {getInitials(getPublicUserName(message.userId))}
                 </div>
 
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-slate-900">
-                      {message.userId?.name || 'Learner'}
+                      {getPublicUserName(message.userId)}
                     </span>
                     <span className="text-xs text-slate-500">{formatTime(message.timestamp)}</span>
                   </div>
 
                   {message.repliedTo ? (
                     <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                      Replying to {message.repliedTo?.userId?.name || 'Learner'}: {message.repliedTo?.content}
+                      Replying to {getPublicUserName(message.repliedTo?.userId)}: {message.repliedTo?.content}
                     </div>
                   ) : null}
 
@@ -347,24 +354,26 @@ export default function ChatRoom({ weekId, courseId, year, weekNumber, onOpenDis
                     {message.content}
                   </p>
 
-                  <div className="mt-2 flex items-center gap-2">
-                    <button
-                      onClick={() => setReplyTo(message)}
-                      className="rounded-full bg-slate-100 p-2 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700"
-                      aria-label="Reply to message"
-                    >
-                      <MessageCircle size={14} />
-                    </button>
-                    <button
-                      onClick={() => reportMessage(message._id, 'Spam or inappropriate')}
-                      className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 transition hover:bg-amber-100"
-                      aria-label="Report message"
-                      title="Report spam or inappropriate message"
-                    >
-                      <Flag size={14} />
-                      Report
-                    </button>
-                  </div>
+                  {canUseQuickChat ? (
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        onClick={() => setReplyTo(message)}
+                        className="rounded-full bg-slate-100 p-2 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700"
+                        aria-label="Reply to message"
+                      >
+                        <MessageCircle size={14} />
+                      </button>
+                      <button
+                        onClick={() => reportMessage(message._id, 'Spam or inappropriate')}
+                        className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 transition hover:bg-amber-100"
+                        aria-label="Report message"
+                        title="Report spam or inappropriate message"
+                      >
+                        <Flag size={14} />
+                        Report
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ))}
@@ -378,10 +387,12 @@ export default function ChatRoom({ weekId, courseId, year, weekNumber, onOpenDis
       </div>
 
       <div className="border-t border-slate-200 bg-slate-50 px-5 py-4">
-        {replyTo ? (
+        {replyTo && canUseQuickChat ? (
           <div className="mb-3 flex items-start justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-3 py-3 text-sm text-slate-600">
             <div>
-              <p className="font-semibold text-slate-900">Replying to {replyTo.userId?.name}</p>
+              <p className="font-semibold text-slate-900">
+                Replying to {getPublicUserName(replyTo.userId)}
+              </p>
               <p className="mt-1 line-clamp-2">{replyTo.content}</p>
             </div>
             <button
@@ -393,6 +404,8 @@ export default function ChatRoom({ weekId, courseId, year, weekNumber, onOpenDis
           </div>
         ) : null}
 
+        {canUseQuickChat ? (
+          <>
         <div className="mb-3">
           <div className="mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
             <span>Send cooldown</span>
@@ -423,6 +436,12 @@ export default function ChatRoom({ weekId, courseId, year, weekNumber, onOpenDis
             Send
           </button>
         </form>
+          </>
+        ) : (
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm text-blue-800">
+            Guest mode lets you read quick chat only. Continue with Google to reply or send live messages.
+          </div>
+        )}
       </div>
     </div>
   );

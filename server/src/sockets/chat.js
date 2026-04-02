@@ -1,4 +1,6 @@
 const Message = require('../models/Message');
+const User = require('../models/User');
+const { verifyToken } = require('../utils/jwt');
 const { sanitizeMarkdown } = require('../utils/validation');
 
 const CHAT_RETENTION_MS = 30 * 60 * 1000;
@@ -13,6 +15,7 @@ const CONTACT_PROMOTION_PATTERN =
 const socketSessions = new Map();
 const roomPresence = new Map();
 const userCooldowns = new Map();
+const globalPresence = new Map();
 
 function validateRoomFormat(roomId) {
   return /^[a-zA-Z0-9\-_]+_\d{4}_[a-zA-Z0-9\-_]+$/.test(roomId);
@@ -57,6 +60,27 @@ function emitRoomStats(io, roomId) {
   io.to(roomId).emit('room-stats', { onlineUsers });
 }
 
+function incrementGlobalPresence(userId) {
+  globalPresence.set(userId, (globalPresence.get(userId) || 0) + 1);
+}
+
+function decrementGlobalPresence(userId) {
+  if (!globalPresence.has(userId)) return;
+
+  const nextCount = (globalPresence.get(userId) || 0) - 1;
+  if (nextCount <= 0) {
+    globalPresence.delete(userId);
+  } else {
+    globalPresence.set(userId, nextCount);
+  }
+}
+
+function emitGlobalPresence(io) {
+  io.emit('presence-stats', {
+    activeUsers: globalPresence.size,
+  });
+}
+
 function cleanupSession(io, socket) {
   const session = socketSessions.get(socket.id);
   if (!session) return;
@@ -92,12 +116,50 @@ function containsBlockedChatContent(content = '') {
   );
 }
 
+async function authenticateSocketUser(socket) {
+  if (socket.currentUser) {
+    return socket.currentUser;
+  }
+
+  const token = socket.handshake?.auth?.token;
+  if (!token) {
+    throw new Error('Missing authentication token');
+  }
+
+  const decoded = verifyToken(token);
+  const user = await User.findById(decoded.userId);
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  socket.currentUser = user;
+  return user;
+}
+
 const initializeSocketIO = (io, socket) => {
+  socket.on('presence-init', async () => {
+    try {
+      const user = await authenticateSocketUser(socket);
+      const userId = String(user._id);
+
+      if (!socket.globalPresenceUserId) {
+        socket.globalPresenceUserId = userId;
+        incrementGlobalPresence(userId);
+      }
+
+      emitGlobalPresence(io);
+    } catch (error) {
+      console.error('Error initializing global presence:', error);
+      socket.emit('chat-error', { message: 'Unable to initialize live presence.' });
+    }
+  });
+
   socket.on('join-room', async (data) => {
     try {
-      const { roomId, weekId, userId } = data || {};
+      const { roomId, weekId } = data || {};
+      const user = await authenticateSocketUser(socket);
 
-      if (!roomId || !weekId || !userId || !validateRoomFormat(roomId)) {
+      if (!roomId || !weekId || !validateRoomFormat(roomId)) {
         socket.emit('chat-error', { message: 'Invalid room details.' });
         return;
       }
@@ -107,9 +169,9 @@ const initializeSocketIO = (io, socket) => {
       await pruneExpiredMessages(weekId);
 
       socket.join(roomId);
-      socket.userData = { roomId, weekId, userId };
-      socketSessions.set(socket.id, { roomId, weekId, userId });
-      incrementPresence(roomId, String(userId));
+      socket.userData = { roomId, weekId, userId: String(user._id) };
+      socketSessions.set(socket.id, { roomId, weekId, userId: String(user._id) });
+      incrementPresence(roomId, String(user._id));
       emitRoomStats(io, roomId);
 
       const cutoff = new Date(Date.now() - CHAT_RETENTION_MS);
@@ -120,16 +182,16 @@ const initializeSocketIO = (io, socket) => {
       })
         .sort({ timestamp: 1 })
         .limit(50)
-        .populate('userId', 'name avatar')
+        .populate('userId', 'name displayName avatar')
         .populate({
           path: 'repliedTo',
-          populate: { path: 'userId', select: 'name avatar' },
+          populate: { path: 'userId', select: 'name displayName avatar' },
         })
         .lean();
 
       socket.emit('message-history', messages);
       socket.emit('cooldown-update', {
-        remainingSeconds: getCooldownRemaining(String(userId), roomId),
+        remainingSeconds: getCooldownRemaining(String(user._id), roomId),
       });
     } catch (error) {
       console.error('Error joining chat room:', error);
@@ -141,9 +203,17 @@ const initializeSocketIO = (io, socket) => {
     try {
       const { content, repliedTo = null } = data || {};
       const { roomId, weekId, userId } = socket.userData || {};
+      const user = await authenticateSocketUser(socket);
 
       if (!roomId || !weekId || !userId) {
         socket.emit('chat-error', { message: 'Please re-open the chat and try again.' });
+        return;
+      }
+
+      if (user.authProvider !== 'google') {
+        socket.emit('chat-error', {
+          message: 'Please sign in with Google to send quick chat messages.',
+        });
         return;
       }
 
@@ -199,11 +269,11 @@ const initializeSocketIO = (io, socket) => {
         repliedTo: repliedTo || null,
       });
 
-      await message.populate('userId', 'name avatar');
+      await message.populate('userId', 'name displayName avatar');
       if (message.repliedTo) {
         await message.populate({
           path: 'repliedTo',
-          populate: { path: 'userId', select: 'name avatar' },
+          populate: { path: 'userId', select: 'name displayName avatar' },
         });
       }
 
@@ -280,6 +350,11 @@ const initializeSocketIO = (io, socket) => {
   });
 
   socket.on('disconnect', () => {
+    if (socket.globalPresenceUserId) {
+      decrementGlobalPresence(socket.globalPresenceUserId);
+      socket.globalPresenceUserId = null;
+      emitGlobalPresence(io);
+    }
     cleanupSession(io, socket);
   });
 };

@@ -8,10 +8,19 @@ let socket = null;
  * Initialize Socket.io connection
  */
 export const initializeSocket = (userName) => {
-  if (socket?.connected) return socket;
+  const token = typeof window !== 'undefined' ? window.localStorage.getItem('token') : null;
+  const auth = { userName, token };
+
+  if (socket) {
+    socket.auth = auth;
+    if (!socket.connected) {
+      socket.connect();
+    }
+    return socket;
+  }
 
   socket = io(SOCKET_URL, {
-    auth: { userName },
+    auth,
     reconnection: true,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,

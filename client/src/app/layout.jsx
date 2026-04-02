@@ -1,5 +1,5 @@
 import './globals.css';
-import { Metadata } from 'next';
+import AuthBootstrap from '@/components/AuthBootstrap';
 
 export const metadata = {
   title: 'NPTEL Hub - Community Learning Platform',
@@ -15,6 +15,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body className="bg-slate-50">
+        <AuthBootstrap />
         {children}
       </body>
     </html>

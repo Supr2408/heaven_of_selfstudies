@@ -7,15 +7,18 @@ import useStore from '@/store/useStore';
 
 export default function DashboardLayout({ children }) {
   const router = useRouter();
-  const { isAuthenticated } = useStore();
+  const { isAuthenticated, authReady } = useStore((state) => ({
+    isAuthenticated: state.isAuthenticated,
+    authReady: state.authReady,
+  }));
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (authReady && !isAuthenticated) {
       router.replace('/login');
     }
-  }, [isAuthenticated, router]);
+  }, [authReady, isAuthenticated, router]);
 
-  if (!isAuthenticated) return null;
+  if (!authReady || !isAuthenticated) return null;
 
   return <MainLayout>{children}</MainLayout>;
 }

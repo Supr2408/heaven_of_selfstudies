@@ -3,11 +3,12 @@ import { create } from 'zustand';
 /**
  * Global state management using Zustand
  */
-const useStore = create((set, get) => ({
+const useStore = create((set) => ({
   // Auth state
   user: null,
   token: null,
   isAuthenticated: false,
+  authReady: false,
 
   // UI state
   sidebarOpen: true,
@@ -24,6 +25,7 @@ const useStore = create((set, get) => ({
   currentRoomId: null,
   messages: [],
   onlineUsers: 0,
+  globalActiveUsers: 0,
   isTyping: false,
 
   // Resources state
@@ -33,12 +35,22 @@ const useStore = create((set, get) => ({
   // Auth actions
   setUser: (user) => set({ user }),
   setToken: (token) => set({ token, isAuthenticated: !!token }),
+  setAuthReady: (authReady) => set({ authReady }),
+  initializeAuth: ({ user, token }) =>
+    set({
+      user,
+      token,
+      isAuthenticated: !!token,
+      authReady: true,
+    }),
   logout: () => set({
     user: null,
     token: null,
     isAuthenticated: false,
+    authReady: true,
     messages: [],
     currentRoomId: null,
+    globalActiveUsers: 0,
   }),
 
   // UI actions
@@ -68,6 +80,7 @@ const useStore = create((set, get) => ({
     messages: state.messages.filter((msg) => msg._id !== messageId),
   })),
   setOnlineUsers: (count) => set({ onlineUsers: count }),
+  setGlobalActiveUsers: (count) => set({ globalActiveUsers: count }),
   setIsTyping: (typing) => set({ isTyping: typing }),
 
   // Resources actions
@@ -90,6 +103,7 @@ const useStore = create((set, get) => ({
     user: null,
     token: null,
     isAuthenticated: false,
+    authReady: false,
     selectedSubject: null,
     selectedCourse: null,
     selectedYear: null,
@@ -97,6 +111,7 @@ const useStore = create((set, get) => ({
     contentVersion: 0,
     currentRoomId: null,
     messages: [],
+    globalActiveUsers: 0,
   }),
 }));
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { ThumbsUp, ThumbsDown, MessageCircle, Flag, ExternalLink } from 'lucide-react';
 import { resourceAPI } from '@/lib/api';
+import { getPublicUserName } from '@/lib/user';
 import useStore from '@/store/useStore';
 
 export default function ResourceVault({ weekId }) {
@@ -107,7 +108,7 @@ export default function ResourceVault({ weekId }) {
                     {resource.title}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    by {resource.userId?.name}
+                    by {getPublicUserName(resource.userId)}
                   </p>
                 </div>
                 <span className="px-2 py-1 bg-slate-100 text-xs rounded text-slate-600 capitalize ml-2">

@@ -1,4 +1,6 @@
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 const YearInstance = require('../models/YearInstance');
 const Week = require('../models/Week');
 const Message = require('../models/Message');
@@ -27,9 +29,77 @@ const extractDriveFileId = (url = '') => {
 const resolveMaterialPdfUrl = (url = '') => {
   const driveFileId = extractDriveFileId(url);
   if (driveFileId) {
-    return `https://drive.google.com/uc?export=download&id=${driveFileId}`;
+    return `https://drive.google.com/uc?export=download&id=${driveFileId}&confirm=t`;
   }
   return url;
+};
+
+const defaultPdfRequestHeaders = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+};
+
+const isPdfBufferResponse = (response) => {
+  const buffer = Buffer.from(response?.data || '');
+  const header = buffer.subarray(0, 5).toString();
+  const contentType = String(response?.headers?.['content-type'] || '').toLowerCase();
+
+  return {
+    buffer,
+    isPdf: contentType.includes('pdf') || header === '%PDF-',
+    contentType,
+  };
+};
+
+const decodeEscapedUrl = (value = '') =>
+  value
+    .replace(/\\u003d/g, '=')
+    .replace(/\\u0026/g, '&')
+    .replace(/\\u002f/gi, '/')
+    .replace(/\\\//g, '/')
+    .replace(/&amp;/g, '&');
+
+const extractGoogleDriveDownloadUrl = (html = '', fileId = '') => {
+  const normalized = decodeEscapedUrl(String(html || ''));
+
+  const downloadUrlMatch = normalized.match(/"downloadUrl":"([^"]+)"/);
+  if (downloadUrlMatch?.[1]) {
+    return decodeEscapedUrl(downloadUrlMatch[1]);
+  }
+
+  const formActionMatch = normalized.match(/<form[^>]+id="download-form"[^>]+action="([^"]+)"/i);
+  if (formActionMatch?.[1]) {
+    return decodeEscapedUrl(formActionMatch[1]);
+  }
+
+  const hrefMatch = normalized.match(/href="(\/uc\?export=download[^"]*confirm[^"]*)"/i);
+  if (hrefMatch?.[1]) {
+    return `https://drive.google.com${decodeEscapedUrl(hrefMatch[1])}`;
+  }
+
+  if (fileId) {
+    return `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`;
+  }
+
+  return '';
+};
+
+const fetchPdfBuffer = async (url, extraHeaders = {}) =>
+  axios.get(url, {
+    responseType: 'arraybuffer',
+    timeout: 20000,
+    maxRedirects: 5,
+    headers: {
+      ...defaultPdfRequestHeaders,
+      ...extraHeaders,
+    },
+  });
+
+const sendPdfBuffer = (res, buffer) => {
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'inline; filename="study-material.pdf"');
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  res.send(buffer);
 };
 
 /**
@@ -492,32 +562,62 @@ exports.proxyWeekMaterialPdf = catchAsync(async (req, res, next) => {
     return next(new AppError('Material URL is missing', 404));
   }
 
-  const pdfUrl = resolveMaterialPdfUrl(material.url);
+  if (material.url.startsWith('/uploads/')) {
+    const uploadsRoot = path.resolve(__dirname, '../../uploads');
+    const relativeUploadPath = material.url.replace(/^\/+/, '');
+    const localFilePath = path.resolve(__dirname, '../../', relativeUploadPath);
 
-  try {
-    const response = await axios.get(pdfUrl, {
-      responseType: 'arraybuffer',
-      timeout: 20000,
-      maxRedirects: 5,
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      },
-    });
+    if (!localFilePath.startsWith(uploadsRoot)) {
+      return next(new AppError('Invalid uploaded PDF path', 400));
+    }
 
-    const buffer = Buffer.from(response.data);
-    const header = buffer.subarray(0, 5).toString();
-    const contentType = String(response.headers['content-type'] || '').toLowerCase();
-    const isPdf = contentType.includes('pdf') || header === '%PDF-';
-
-    if (!isPdf) {
-      return next(new AppError('Unable to load this material as a PDF', 415));
+    if (!fs.existsSync(localFilePath)) {
+      return next(new AppError('Uploaded PDF file not found', 404));
     }
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="study-material.pdf"');
     res.setHeader('Cache-Control', 'private, max-age=300');
-    res.send(buffer);
+    return res.sendFile(localFilePath);
+  }
+
+  const pdfUrl = resolveMaterialPdfUrl(material.url);
+
+  try {
+    const response = await fetchPdfBuffer(pdfUrl);
+    const { buffer, isPdf, contentType } = isPdfBufferResponse(response);
+
+    if (isPdf) {
+      return sendPdfBuffer(res, buffer);
+    }
+
+    const driveFileId = extractDriveFileId(material.url);
+    if (driveFileId) {
+      const cookieHeader = (response.headers['set-cookie'] || [])
+        .map((cookie) => cookie.split(';')[0])
+        .join('; ');
+      const html = buffer.toString('utf8');
+      const confirmedDownloadUrl = extractGoogleDriveDownloadUrl(html, driveFileId);
+
+      if (confirmedDownloadUrl) {
+        const confirmedResponse = await fetchPdfBuffer(confirmedDownloadUrl, {
+          ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+          Referer: 'https://drive.google.com/',
+        });
+        const confirmedResult = isPdfBufferResponse(confirmedResponse);
+
+        if (confirmedResult.isPdf) {
+          return sendPdfBuffer(res, confirmedResult.buffer);
+        }
+      }
+    }
+
+    console.error('Unexpected non-PDF material response:', {
+      url: pdfUrl,
+      materialUrl: material.url,
+      contentType,
+    });
+    return next(new AppError('Unable to load this material as a PDF', 415));
   } catch (error) {
     console.error('Error proxying week PDF material:', error.message);
     return next(new AppError('Unable to load this PDF right now', 502));

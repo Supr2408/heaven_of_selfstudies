@@ -5,6 +5,10 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/a
  */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const isNetworkError = (error) =>
+  error instanceof TypeError ||
+  /failed to fetch|networkerror|load failed/i.test(String(error?.message || ''));
+
 /**
  * HTTP Client wrapper with retry logic for rate limiting
  */
@@ -13,7 +17,6 @@ const apiClient = async (endpoint, options = {}) => {
     method = 'GET',
     body = null,
     headers = {},
-    includeAuth = true,
     retries = 3,
   } = options;
 
@@ -46,7 +49,7 @@ const apiClient = async (endpoint, options = {}) => {
       let data;
       try {
         data = await response.json();
-      } catch (e) {
+      } catch {
         // Handle non-JSON responses
         data = { message: response.statusText || 'Server error' };
       }
@@ -71,6 +74,11 @@ const apiClient = async (endpoint, options = {}) => {
       return data;
     } catch (error) {
       lastError = error;
+      if (isNetworkError(error) && attempt < retries - 1) {
+        const retryDelayMs = Math.min(600 * (attempt + 1), 2000);
+        await sleep(retryDelayMs);
+        continue;
+      }
       // Only retry on rate limit errors
       if (error.status === 429 && attempt < retries - 1) {
         const backoffMs = Math.min(1000 * Math.pow(2, attempt), 10000);
@@ -78,6 +86,10 @@ const apiClient = async (endpoint, options = {}) => {
         continue;
       }
       // For other errors, throw immediately
+      if (isNetworkError(error)) {
+        error.message =
+          'Unable to reach the server. Please make sure the backend is running and try again.';
+      }
       console.error(`API Error [${endpoint}]:`, error.message);
       throw error;
     }
@@ -85,6 +97,10 @@ const apiClient = async (endpoint, options = {}) => {
 
   // After all retries exhausted
   if (lastError) {
+    if (isNetworkError(lastError)) {
+      lastError.message =
+        'Unable to reach the server. Please make sure the backend is running and try again.';
+    }
     console.error(`API Error [${endpoint}]: Max retries exceeded:`, lastError.message);
     throw lastError;
   }
@@ -128,6 +144,12 @@ const apiFormRequest = async (endpoint, formData, options = {}) => {
 export const authAPI = {
   register: (data) => apiClient('/auth/register', { method: 'POST', body: data }),
   login: (data) => apiClient('/auth/login', { method: 'POST', body: data }),
+  guestLogin: (guestCode) =>
+    apiClient('/auth/guest', { method: 'POST', body: { guestCode } }),
+  googleLogin: (credential) =>
+    apiClient('/auth/google', { method: 'POST', body: { credential } }),
+  devLogin: (guestCode) =>
+    apiClient('/auth/dev-login', { method: 'POST', body: { guestCode } }),
   logout: () => apiRequest('/auth/logout', { method: 'POST' }),
   verifyEmail: (token) => apiClient('/auth/verify-email', { method: 'POST', body: { token } }),
   forgotPassword: (email) => apiClient('/auth/forgot-password', { method: 'POST', body: { email } }),
@@ -228,6 +250,24 @@ export const assignmentAPI = {
     apiClient(`/assignments/${courseCode}/solution/${weekNumber}`),
   deleteAssignments: (courseCode) =>
     apiClient(`/assignments/${courseCode}`, {
+      method: 'DELETE',
+    }),
+};
+
+export const commonDiscussionAPI = {
+  getPosts: () => apiClient('/common-discussion/posts'),
+  createPost: (data) =>
+    apiRequest('/common-discussion/posts', {
+      method: 'POST',
+      body: data,
+    }),
+  addReply: (postId, text) =>
+    apiRequest(`/common-discussion/posts/${postId}/replies`, {
+      method: 'POST',
+      body: { text },
+    }),
+  deletePost: (postId) =>
+    apiRequest(`/common-discussion/posts/${postId}`, {
       method: 'DELETE',
     }),
 };

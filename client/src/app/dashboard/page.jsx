@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, BookOpen, Clock3, Library, Search } from 'lucide-react';
 import { yearInstanceAPI } from '@/lib/api';
+import { getPublicUserName } from '@/lib/user';
 import useStore from '@/store/useStore';
 
 const getCourseId = (instance) =>
@@ -23,7 +24,7 @@ const getFirstOpenableWeek = (instance) => {
 
 export default function Dashboard() {
   const router = useRouter();
-  const learnerName = useStore((state) => state.user?.name || 'Learner');
+  const learnerName = useStore((state) => getPublicUserName(state.user));
   const [yearInstances, setYearInstances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

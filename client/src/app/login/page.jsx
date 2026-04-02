@@ -108,6 +108,20 @@ export default function LoginPage() {
     }
   };
 
+  const handleGuestLogin = async () => {
+    setError('');
+    setLoading(true);
+
+    try {
+      const loginResponse = await authAPI.guestLogin(ensureGuestCode());
+      completeLogin(loginResponse);
+    } catch (err) {
+      setError(err.message || 'Guest access could not be started');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <>
       <Script
@@ -218,21 +232,36 @@ export default function LoginPage() {
                     </p>
                   )}
 
-                  {SHOW_DEV_LOGIN && (
-                    <div className="mt-6 border-t border-slate-200 pt-6">
-                      <button
-                        type="button"
-                        onClick={handleDevLogin}
-                        disabled={loading}
-                        className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Continue as Demo User
-                      </button>
-                      <p className="mt-3 text-center text-xs leading-5 text-slate-500">
-                        Local development fallback for testing without a Google Client ID.
-                      </p>
-                    </div>
-                  )}
+                  <div className="mt-6 border-t border-slate-200 pt-6">
+                    <button
+                      type="button"
+                      onClick={handleGuestLogin}
+                      disabled={loading}
+                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Continue as Guest
+                    </button>
+                    <p className="mt-3 text-center text-xs leading-5 text-slate-500">
+                      Guest access lets you browse courses and materials. Google sign-in is
+                      still required for posting and chat.
+                    </p>
+
+                    {SHOW_DEV_LOGIN && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleDevLogin}
+                          disabled={loading}
+                          className="mt-4 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Continue as Demo User
+                        </button>
+                        <p className="mt-3 text-center text-xs leading-5 text-slate-500">
+                          Local development fallback for testing without a Google Client ID.
+                        </p>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 <p className="mt-6 text-sm leading-7 text-slate-500">

@@ -1,5 +1,5 @@
 # Multi-stage build for production-grade Node.js backend
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -10,7 +10,7 @@ COPY package*.json ./
 RUN npm ci --only=production && npm cache clean --force
 
 # Main stage
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 
@@ -29,7 +29,7 @@ USER nodejs
 
 # Health check endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:5000/api/health || exit 1
+  CMD sh -c "curl -f http://localhost:${PORT:-5000}/api/health || exit 1"
 
 # Expose port
 EXPOSE 5000
@@ -38,8 +38,4 @@ EXPOSE 5000
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 # Start application
-CMD ["node", "server.js"]
-
-EXPOSE 5000
-
 CMD ["node", "server.js"]

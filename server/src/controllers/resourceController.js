@@ -69,7 +69,7 @@ exports.createResource = catchAsync(async (req, res, next) => {
     return next(new AppError('Please provide required fields', 400));
   }
 
-  const requiresUrl = type !== 'discussion';
+  const requiresUrl = ['link', 'solution', 'resource'].includes(type);
 
   if (requiresUrl && !url) {
     return next(new AppError('Please provide URL or file path', 400));
@@ -91,6 +91,44 @@ exports.createResource = catchAsync(async (req, res, next) => {
   res.status(201).json({
     success: true,
     message: 'Resource created successfully',
+    data: resource,
+  });
+});
+
+exports.createUploadedResource = catchAsync(async (req, res, next) => {
+  const { weekId, title, description, type = 'solution' } = req.body;
+  const userId = req.user._id;
+
+  if (!weekId || !title) {
+    return next(new AppError('Please provide week and title', 400));
+  }
+
+  if (!req.file) {
+    return next(new AppError('Please upload a PDF file', 400));
+  }
+
+  const allowedTypes = ['solution', 'note', 'resource'];
+  const normalizedType = allowedTypes.includes(type) ? type : 'solution';
+  const relativeUrl = `/uploads/community/${req.file.filename}`;
+
+  const resource = await Resource.create({
+    weekId,
+    userId,
+    title: sanitizeInput(title),
+    description: description ? sanitizeInput(description) : 'Submitted by the community for admin review.',
+    type: normalizedType,
+    url: relativeUrl,
+    fileType: 'pdf',
+    fileSize: req.file.size,
+    isVerified: false,
+    tags: ['pending-review', 'community-upload'],
+  });
+
+  await resource.populate('userId', 'name avatar');
+
+  res.status(201).json({
+    success: true,
+    message: 'PDF submitted for admin review',
     data: resource,
   });
 });

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Download, Link as LinkIcon, MessageCircle, Search } from 'lucide-react';
+import { Link as LinkIcon, Search } from 'lucide-react';
 import { assignmentAPI } from '@/lib/api';
 
 export default function AssignmentExtractor() {
@@ -40,7 +40,7 @@ export default function AssignmentExtractor() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-slate-900 mb-4">📚 NPTEL Assignment Extractor</h1>
         <p className="text-slate-600 mb-4">
-          Extract assignment solutions directly from NPTEL announcements. Enter a course code and we'll fetch all available solutions.
+          Extract assignment solutions directly from NPTEL announcements. Enter a course code and we&apos;ll fetch all available solutions.
         </p>
 
         {/* Course Code Examples */}

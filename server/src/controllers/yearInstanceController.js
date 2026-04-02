@@ -1,3 +1,4 @@
+const axios = require('axios');
 const YearInstance = require('../models/YearInstance');
 const Week = require('../models/Week');
 const Message = require('../models/Message');
@@ -7,6 +8,29 @@ const {
   scrapeNPTELAnnouncements,
   convertDriveLink,
 } = require('../utils/nptelScraper');
+
+const DRIVE_FILE_PATTERNS = [
+  /\/file\/d\/([a-zA-Z0-9-_]+)/,
+  /\/d\/([a-zA-Z0-9-_]+)/,
+  /[?&]id=([a-zA-Z0-9-_]+)/,
+  /\/uc\?(?:[^#]*&)?id=([a-zA-Z0-9-_]+)/,
+];
+
+const extractDriveFileId = (url = '') => {
+  for (const pattern of DRIVE_FILE_PATTERNS) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
+};
+
+const resolveMaterialPdfUrl = (url = '') => {
+  const driveFileId = extractDriveFileId(url);
+  if (driveFileId) {
+    return `https://drive.google.com/uc?export=download&id=${driveFileId}`;
+  }
+  return url;
+};
 
 /**
  * Get all year instances (optionally filtered by course)
@@ -448,4 +472,54 @@ exports.getWeekMaterials = catchAsync(async (req, res, next) => {
       },
     },
   });
+});
+
+exports.proxyWeekMaterialPdf = catchAsync(async (req, res, next) => {
+  const { weekId, materialIndex } = req.params;
+  const week = await Week.findById(weekId);
+
+  if (!week) {
+    return next(new AppError('Week not found', 404));
+  }
+
+  const index = parseInt(materialIndex, 10);
+  if (Number.isNaN(index) || index < 0 || index >= week.materials.length) {
+    return next(new AppError('Invalid material index', 400));
+  }
+
+  const material = week.materials[index];
+  if (!material?.url) {
+    return next(new AppError('Material URL is missing', 404));
+  }
+
+  const pdfUrl = resolveMaterialPdfUrl(material.url);
+
+  try {
+    const response = await axios.get(pdfUrl, {
+      responseType: 'arraybuffer',
+      timeout: 20000,
+      maxRedirects: 5,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      },
+    });
+
+    const buffer = Buffer.from(response.data);
+    const header = buffer.subarray(0, 5).toString();
+    const contentType = String(response.headers['content-type'] || '').toLowerCase();
+    const isPdf = contentType.includes('pdf') || header === '%PDF-';
+
+    if (!isPdf) {
+      return next(new AppError('Unable to load this material as a PDF', 415));
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="study-material.pdf"');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.send(buffer);
+  } catch (error) {
+    console.error('Error proxying week PDF material:', error.message);
+    return next(new AppError('Unable to load this PDF right now', 502));
+  }
 });

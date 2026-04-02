@@ -1,378 +1,287 @@
 const Message = require('../models/Message');
-const User = require('../models/User');
-const Week = require('../models/Week');
 const { sanitizeMarkdown } = require('../utils/validation');
 
-// Track user sessions per socket for cleanup
-const socketUserSessions = new Map();
+const CHAT_RETENTION_MS = 30 * 60 * 1000;
+const MESSAGE_COOLDOWN_MS = 30 * 1000;
+const AUTO_HIDE_REPORT_THRESHOLD = 3;
+const LINK_PATTERN = /\b(?:https?:\/\/|www\.)\S+/i;
+const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
+const PHONE_PATTERN = /(?:\+?\d[\d\s-]{7,}\d)/;
+const CONTACT_PROMOTION_PATTERN =
+  /\b(?:whatsapp|telegram|tg|tele(?:gram)?|discord|group link|join (?:my|our|the) group|contact me|call me|dm me|inbox me|message me privately|personal number|phone number)\b/i;
 
-/**
- * Helper: Validate room naming format {courseId}_{year}_{weekId}
- * Accepts: courseId_year_weekId (where courseId and weekId can be ObjectIds, slugs, or alphanumeric)
- * Allows: alphanumeric, hyphens, underscores for courseId and weekId
- */
+const socketSessions = new Map();
+const roomPresence = new Map();
+const userCooldowns = new Map();
+
 function validateRoomFormat(roomId) {
-  const roomRegex = /^[a-zA-Z0-9\-_]+_\d{4}_[a-zA-Z0-9\-_]+$/;
-  return roomRegex.test(roomId);
+  return /^[a-zA-Z0-9\-_]+_\d{4}_[a-zA-Z0-9\-_]+$/.test(roomId);
 }
 
-/**
- * Helper: Cleanup user from all rooms on disconnect
- */
-function cleanupUserSession(socket) {
-  if (socketUserSessions.has(socket.id)) {
-    const userSession = socketUserSessions.get(socket.id);
-    socket.leave(userSession.roomId);
-    socketUserSessions.delete(socket.id);
-    console.log(`✅ Cleaned up session for socket ${socket.id}`);
+async function pruneExpiredMessages(weekId) {
+  const cutoff = new Date(Date.now() - CHAT_RETENTION_MS);
+  await Message.deleteMany({
+    weekId,
+    timestamp: { $lt: cutoff },
+  });
+}
+
+function incrementPresence(roomId, userId) {
+  if (!roomPresence.has(roomId)) {
+    roomPresence.set(roomId, new Map());
+  }
+
+  const roomUsers = roomPresence.get(roomId);
+  roomUsers.set(userId, (roomUsers.get(userId) || 0) + 1);
+}
+
+function decrementPresence(roomId, userId) {
+  if (!roomPresence.has(roomId)) return;
+
+  const roomUsers = roomPresence.get(roomId);
+  const nextCount = (roomUsers.get(userId) || 0) - 1;
+
+  if (nextCount <= 0) {
+    roomUsers.delete(userId);
+  } else {
+    roomUsers.set(userId, nextCount);
+  }
+
+  if (roomUsers.size === 0) {
+    roomPresence.delete(roomId);
   }
 }
 
-/**
- * Rate limiter for messages per user per room
- * Limits: 10 messages per minute per room
- */
-const messageRateLimiter = new Map();
+function emitRoomStats(io, roomId) {
+  const onlineUsers = roomPresence.get(roomId)?.size || 0;
+  io.to(roomId).emit('room-stats', { onlineUsers });
+}
 
-function checkMessageRateLimit(userId, roomId) {
+function cleanupSession(io, socket) {
+  const session = socketSessions.get(socket.id);
+  if (!session) return;
+
+  socket.leave(session.roomId);
+  decrementPresence(session.roomId, session.userId);
+  socketSessions.delete(socket.id);
+  emitRoomStats(io, session.roomId);
+}
+
+function getCooldownRemaining(userId, roomId) {
   const key = `${userId}:${roomId}`;
-  const now = Date.now();
-  const windowMs = 60 * 1000; // 1 minute
-  const maxMessages = 10;
+  const lastSentAt = userCooldowns.get(key);
+  if (!lastSentAt) return 0;
 
-  if (!messageRateLimiter.has(key)) {
-    messageRateLimiter.set(key, []);
-  }
-
-  const timestamps = messageRateLimiter.get(key);
-  
-  // Remove old timestamps outside the window
-  const validTimestamps = timestamps.filter(ts => now - ts < windowMs);
-  messageRateLimiter.set(key, validTimestamps);
-
-  if (validTimestamps.length >= maxMessages) {
-    return false; // Rate limit exceeded
-  }
-
-  validTimestamps.push(now);
-  return true; // Allow message
+  const remainingMs = MESSAGE_COOLDOWN_MS - (Date.now() - lastSentAt);
+  return remainingMs > 0 ? Math.ceil(remainingMs / 1000) : 0;
 }
 
-/**
- * Socket.io handlers for real-time chat
- * Room format: courseId_year_weekNumber
- */
+function startCooldown(userId, roomId) {
+  userCooldowns.set(`${userId}:${roomId}`, Date.now());
+}
+
+function containsBlockedChatContent(content = '') {
+  const normalized = String(content || '').trim();
+  if (!normalized) return false;
+
+  return (
+    LINK_PATTERN.test(normalized) ||
+    EMAIL_PATTERN.test(normalized) ||
+    PHONE_PATTERN.test(normalized) ||
+    CONTACT_PROMOTION_PATTERN.test(normalized)
+  );
+}
+
 const initializeSocketIO = (io, socket) => {
-  /**
-   * Join chat room
-   */
   socket.on('join-room', async (data) => {
     try {
-      const { roomId, weekId, userId } = data;
+      const { roomId, weekId, userId } = data || {};
 
-      if (!roomId || !userId) {
-        socket.emit('error', { message: 'Invalid room or user data' });
+      if (!roomId || !weekId || !userId || !validateRoomFormat(roomId)) {
+        socket.emit('chat-error', { message: 'Invalid room details.' });
         return;
       }
 
-      // Validate room naming format
-      if (!validateRoomFormat(roomId)) {
-        console.error(`❌ Invalid room format: ${roomId}`);
-        socket.emit('error', { message: `Invalid room format: ${roomId}` });
-        return;
-      }
+      cleanupSession(io, socket);
 
-      // Cleanup previous room session if exists
-      cleanupUserSession(socket);
+      await pruneExpiredMessages(weekId);
 
-      // Join Socket.io room
       socket.join(roomId);
-      
-      // Store session info
-      socket.userData = { roomId, userId, weekId };
-      socketUserSessions.set(socket.id, { roomId, userId, weekId, joinedAt: new Date() });
+      socket.userData = { roomId, weekId, userId };
+      socketSessions.set(socket.id, { roomId, weekId, userId });
+      incrementPresence(roomId, String(userId));
+      emitRoomStats(io, roomId);
 
-      console.log(`✅ User ${userId} joined room ${roomId} (socket: ${socket.id})`);
-
-      // Notify others that user joined
-      io.to(roomId).emit('user-joined', {
-        message: `${socket.handshake.auth.userName || 'User'} joined the chat`,
-        timestamp: new Date(),
-        userId,
-      });
-
-      // Load message history (last 50 messages for this week only)
-      console.log(`📝 Loading message history for weekId: ${weekId}`);
-      const messages = await Message.find({ weekId, isDeleted: false })
-        .sort({ timestamp: -1 })
+      const cutoff = new Date(Date.now() - CHAT_RETENTION_MS);
+      const messages = await Message.find({
+        weekId,
+        isDeleted: false,
+        timestamp: { $gte: cutoff },
+      })
+        .sort({ timestamp: 1 })
         .limit(50)
         .populate('userId', 'name avatar')
-        .populate('repliedTo', 'content userId')
+        .populate({
+          path: 'repliedTo',
+          populate: { path: 'userId', select: 'name avatar' },
+        })
         .lean();
 
-      console.log(`✅ Found ${messages.length} messages for week`);
-      socket.emit('message-history', messages.reverse());
+      socket.emit('message-history', messages);
+      socket.emit('cooldown-update', {
+        remainingSeconds: getCooldownRemaining(String(userId), roomId),
+      });
     } catch (error) {
-      console.error('Error joining room:', error);
-      socket.emit('error', { message: 'Failed to join room' });
+      console.error('Error joining chat room:', error);
+      socket.emit('chat-error', { message: 'Failed to join quick chat.' });
     }
   });
 
-  /**
-   * Send message
-   */
   socket.on('send-message', async (data) => {
     try {
-      const { content, repliedTo } = data;
-      const { userId, weekId, roomId } = socket.userData;
+      const { content, repliedTo = null } = data || {};
+      const { roomId, weekId, userId } = socket.userData || {};
 
-      if (!content || !userId || !weekId) {
-        console.error('❌ Invalid message data', { content: !!content, userId: !!userId, weekId: !!weekId });
-        socket.emit('error', { message: 'Invalid message data' });
+      if (!roomId || !weekId || !userId) {
+        socket.emit('chat-error', { message: 'Please re-open the chat and try again.' });
         return;
       }
 
-      // Apply rate limiting (10 messages per minute per room)
-      if (!checkMessageRateLimit(userId, roomId)) {
-        socket.emit('error', { 
-          message: 'Message rate limit exceeded. Max 10 messages per minute per room.',
-          code: 'RATE_LIMIT_EXCEEDED'
+      const sanitizedContent = sanitizeMarkdown(String(content || '')).trim();
+      if (!sanitizedContent) {
+        socket.emit('chat-error', { message: 'Message cannot be empty.' });
+        return;
+      }
+
+      if (sanitizedContent.length > 600) {
+        socket.emit('chat-error', { message: 'Message is too long.' });
+        return;
+      }
+
+      if (containsBlockedChatContent(sanitizedContent)) {
+        socket.emit('chat-error', {
+          message:
+            'Links, phone numbers, emails, and personal contact/group invites are not allowed in quick chat. Use the discussion board instead.',
         });
         return;
       }
 
-      // Sanitize content
-      const sanitizedContent = sanitizeMarkdown(content);
-
-      // Validate content length
-      if (sanitizedContent.length > 5000) {
-        socket.emit('error', { message: 'Message too long (max 5000 characters)' });
+      const remainingSeconds = getCooldownRemaining(String(userId), roomId);
+      if (remainingSeconds > 0) {
+        socket.emit('cooldown-update', { remainingSeconds });
+        socket.emit('chat-error', {
+          message: `Please wait ${remainingSeconds}s before sending again.`,
+        });
         return;
       }
 
-      // Create message
-      const newMessage = new Message({
+      await pruneExpiredMessages(weekId);
+
+      const duplicateMessage = await Message.findOne({
+        weekId,
+        userId,
+        isDeleted: false,
+        content: sanitizedContent,
+        timestamp: { $gte: new Date(Date.now() - CHAT_RETENTION_MS) },
+      }).select('_id');
+
+      if (duplicateMessage) {
+        socket.emit('chat-error', {
+          message: 'Repeated messages are blocked in quick chat. Please avoid spam.',
+        });
+        return;
+      }
+
+      const message = await Message.create({
         weekId,
         userId,
         content: sanitizedContent,
         repliedTo: repliedTo || null,
       });
 
-      await newMessage.save();
-      console.log(`✅ Message saved to DB - ID: ${newMessage._id}`);
-
-      // Populate user info
-      await newMessage.populate('userId', 'name avatar');
-      if (newMessage.repliedTo) {
-        await newMessage.populate('repliedTo', 'content userId');
+      await message.populate('userId', 'name avatar');
+      if (message.repliedTo) {
+        await message.populate({
+          path: 'repliedTo',
+          populate: { path: 'userId', select: 'name avatar' },
+        });
       }
 
-      // Broadcast to room (week-isolated)
+      startCooldown(String(userId), roomId);
       io.to(roomId).emit('new-message', {
-        _id: newMessage._id,
-        userId: newMessage.userId,
-        content: newMessage.content,
-        repliedTo: newMessage.repliedTo,
-        timestamp: newMessage.timestamp,
+        _id: message._id,
+        userId: message.userId,
+        content: message.content,
+        repliedTo: message.repliedTo,
+        timestamp: message.timestamp,
       });
+
+      socket.emit('cooldown-update', { remainingSeconds: 30 });
     } catch (error) {
       console.error('Error sending message:', error);
-      socket.emit('error', { message: 'Failed to send message' });
+      socket.emit('chat-error', { message: 'Unable to send your message.' });
     }
   });
 
-  /**
-   * Edit message
-   */
-  socket.on('edit-message', async (data) => {
-    try {
-      const { messageId, content } = data;
-      const { userId } = socket.userData;
-
-      const message = await Message.findById(messageId);
-      if (!message) {
-        socket.emit('error', { message: 'Message not found' });
-        return;
-      }
-
-      // Only allow user to edit their own messages
-      if (message.userId.toString() !== userId) {
-        socket.emit('error', { message: 'Unauthorized to edit this message' });
-        return;
-      }
-
-      message.content = sanitizeMarkdown(content);
-      message.isEdited = true;
-      message.editedAt = new Date();
-      await message.save();
-
-      io.to(socket.userData.roomId).emit('message-edited', {
-        messageId,
-        content: message.content,
-        editedAt: message.editedAt,
-      });
-    } catch (error) {
-      console.error('Error editing message:', error);
-      socket.emit('error', { message: 'Failed to edit message' });
-    }
-  });
-
-  /**
-   * Delete message (soft delete)
-   */
-  socket.on('delete-message', async (data) => {
-    try {
-      const { messageId } = data;
-      const { userId } = socket.userData;
-
-      const message = await Message.findById(messageId);
-      if (!message) {
-        socket.emit('error', { message: 'Message not found' });
-        return;
-      }
-
-      // Check permissions (owner or moderator/admin)
-      const user = await User.findById(userId);
-      if (
-        message.userId.toString() !== userId &&
-        !['moderator', 'admin'].includes(user.role)
-      ) {
-        socket.emit('error', { message: 'Unauthorized to delete this message' });
-        return;
-      }
-
-      message.isDeleted = true;
-      message.deletedAt = new Date();
-      await message.save();
-
-      io.to(socket.userData.roomId).emit('message-deleted', {
-        messageId,
-      });
-    } catch (error) {
-      console.error('Error deleting message:', error);
-      socket.emit('error', { message: 'Failed to delete message' });
-    }
-  });
-
-  /**
-   * Add reaction to message
-   */
-  socket.on('add-reaction', async (data) => {
-    try {
-      const { messageId, emoji } = data;
-      const { userId, roomId } = socket.userData;
-
-      const message = await Message.findById(messageId);
-      if (!message) {
-        socket.emit('error', { message: 'Message not found' });
-        return;
-      }
-
-      if (!message.reactions) {
-        message.reactions = new Map();
-      }
-
-      if (!message.reactions[emoji]) {
-        message.reactions[emoji] = [];
-      }
-
-      if (!message.reactions[emoji].includes(userId)) {
-        message.reactions[emoji].push(userId);
-      }
-
-      await message.save();
-
-      io.to(roomId).emit('reaction-added', {
-        messageId,
-        emoji,
-        reactions: Object.fromEntries(message.reactions),
-      });
-    } catch (error) {
-      console.error('Error adding reaction:', error);
-      socket.emit('error', { message: 'Failed to add reaction' });
-    }
-  });
-
-  /**
-   * Report message
-   */
   socket.on('report-message', async (data) => {
     try {
-      const { messageId, reason } = data;
-      const { userId } = socket.userData;
+      const { messageId, reason } = data || {};
+      const { userId } = socket.userData || {};
+
+      if (!messageId || !userId) {
+        socket.emit('chat-error', { message: 'Invalid report request.' });
+        return;
+      }
 
       const message = await Message.findById(messageId);
-      if (!message) {
-        socket.emit('error', { message: 'Message not found' });
+      if (!message || message.isDeleted) {
+        socket.emit('chat-error', { message: 'This message is no longer available.' });
+        return;
+      }
+
+      const alreadyReported = (message.reports || []).some(
+        (report) => String(report.userId) === String(userId)
+      );
+
+      if (alreadyReported) {
+        socket.emit('chat-error', { message: 'You already reported this message.' });
         return;
       }
 
       message.reports.push({
         userId,
-        reason,
+        reason: sanitizeMarkdown(String(reason || 'Spam')),
         reportedAt: new Date(),
       });
 
+      if (message.reports.length >= AUTO_HIDE_REPORT_THRESHOLD) {
+        message.isDeleted = true;
+        message.deletedAt = new Date();
+      }
+
       await message.save();
 
-      socket.emit('message', {
-        type: 'success',
-        text: 'Message reported successfully',
-      });
+      if (message.isDeleted) {
+        const session = socket.userData || {};
+        if (session.roomId) {
+          io.to(session.roomId).emit('message-removed', { messageId: String(message._id) });
+        }
+      }
+
+      socket.emit('report-success', { messageId });
     } catch (error) {
       console.error('Error reporting message:', error);
-      socket.emit('error', { message: 'Failed to report message' });
+      socket.emit('chat-error', { message: 'Unable to report this message.' });
     }
   });
 
-  /**
-   * Typing indicator
-   */
-  socket.on('typing', (data) => {
-    const { userName } = data;
-    socket.to(socket.userData.roomId).emit('user-typing', {
-      userName: userName || 'Someone',
-    });
-  });
-
-  /**
-   * Stop typing
-   */
-  socket.on('stop-typing', () => {
-    socket.to(socket.userData.roomId).emit('user-stop-typing', {});
-  });
-
-  /**
-   * Leave room
-   */
   socket.on('leave-room', () => {
-    if (socket.userData) {
-      console.log(`👋 User ${socket.userData.userId} leaving room ${socket.userData.roomId}`);
-      io.to(socket.userData.roomId).emit('user-left', {
-        message: 'User left the chat',
-        timestamp: new Date(),
-        userId: socket.userData.userId,
-      });
-      cleanupUserSession(socket);
-    }
+    cleanupSession(io, socket);
   });
 
-  /**
-   * Disconnect handler - automatic cleanup
-   */
   socket.on('disconnect', () => {
-    if (socket.userData) {
-      console.log(`🔌 User ${socket.userData.userId} disconnected from room ${socket.userData.roomId}`);
-      io.to(socket.userData.roomId).emit('user-disconnected', {
-        message: 'User disconnected',
-        timestamp: new Date(),
-        userId: socket.userData.userId,
-      });
-    }
-    cleanupUserSession(socket);
+    cleanupSession(io, socket);
   });
 };
-
-module.exports = { initializeSocketIO };
 
 module.exports = { initializeSocketIO };

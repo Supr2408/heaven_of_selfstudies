@@ -1,5 +1,4 @@
 'use client';
-
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -163,9 +162,8 @@ export default function CoursesPage() {
               Search any NPTEL course and bring its assignment solutions into the Hub
             </h1>
             <p className="text-lg text-slate-600">
-              This page follows the NPTEL course workflow: search for a course,
-              inspect course runs, derive run IDs, scrape materials from announcements,
-              and create subject and course structures organized by years and weeks.
+              This p              and create the same subject, batch, week, and solution-branch structure used by the
+              existing Cloud Computing section.
             </p>
           </div>
 
@@ -180,7 +178,7 @@ export default function CoursesPage() {
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   onKeyDown={(event) => event.key === 'Enter' && handleSearch()}
-                  placeholder="Natural Language Processing, Data Mining, Machine Learning..."
+                  placeholder="Natural Language Processing, Data Mining, Cloud Computing..."
                   className="w-full border-0 bg-transparent p-0 text-slate-900 outline-none placeholder:text-slate-400"
                 />
               </div>
@@ -343,7 +341,7 @@ export default function CoursesPage() {
                     </div>
                     <p className="mt-1 text-sm text-slate-600">
                       Importing will create the subject, course, batch history, weeks, and
-                      assignment-solution structure across different course runs and years.
+                      assignment-solution branches so it appears in the same hierarchy as Cloud Computing.
                     </p>
                     <button
                       onClick={handleImport}
@@ -368,8 +366,8 @@ export default function CoursesPage() {
 
                   {preview.runs.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
-                      No public statistics runs were found on the course page. Import will still
-                      create the course branch with empty solution weeks, but it will not import any video lessons.
+                      No public statistics runs were found on the course page, so import will rely
+                      on the course outline fallback if announcements are unavailable.
                     </div>
                   ) : (
                     <div className="space-y-3">

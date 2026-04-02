@@ -2,6 +2,8 @@ const Subject = require('../models/Subject');
 const Course = require('../models/Course');
 const YearInstance = require('../models/YearInstance');
 const Week = require('../models/Week');
+const Resource = require('../models/Resource');
+const Message = require('../models/Message');
 const { sanitizeInput } = require('../utils/validation');
 const { AppError, catchAsync } = require('../utils/errorHandler');
 const {
@@ -28,12 +30,43 @@ const SEMESTER_ORDER = {
   'Jul-Oct': 2,
   'July-Oct': 2,
 };
+const MAX_IMPORTED_WEEK = 12;
 
 const sortInstancesDesc = (instances = []) =>
   [...instances].sort((a, b) => {
     if (b.year !== a.year) return b.year - a.year;
     return (SEMESTER_ORDER[b.semester] || 0) - (SEMESTER_ORDER[a.semester] || 0);
   });
+
+const removeStaleImportedWeeks = async (yearInstanceId, incomingWeekNumbers = []) => {
+  const staleWeeks = await Week.find({
+    yearInstanceId,
+    $or: [
+      { weekNumber: { $gt: MAX_IMPORTED_WEEK } },
+      ...(incomingWeekNumbers.length ? [{ weekNumber: { $nin: incomingWeekNumbers } }] : []),
+    ],
+  }).select('_id');
+
+  let removed = 0;
+  let skipped = 0;
+
+  for (const staleWeek of staleWeeks) {
+    const [hasMessages, hasResources] = await Promise.all([
+      Message.exists({ weekId: staleWeek._id }),
+      Resource.exists({ weekId: staleWeek._id, isDeleted: { $ne: true } }),
+    ]);
+
+    if (hasMessages || hasResources) {
+      skipped += 1;
+      continue;
+    }
+
+    await Week.deleteOne({ _id: staleWeek._id });
+    removed += 1;
+  }
+
+  return { removed, skipped };
+};
 
 const findBestImportedCourse = async ({ courseCode = '', nptelLink = '' } = {}) => {
   const filters = [];
@@ -515,9 +548,7 @@ exports.importNptelCourse = catchAsync(async (req, res, next) => {
   let runsAdded = 0;
   for (const run of runsData) {
     const { year, semester, status, syllabus, weeks } = run;
-    
-    // Calculate totalWeeks from actual weeks array length to ensure validity
-    const totalWeeks = (weeks || []).length || 12;
+    const totalWeeks = run.totalWeeks || (weeks || []).length || 12;
 
     let yearInstance = await YearInstance.findOne({
       courseId: course._id,
@@ -535,39 +566,31 @@ exports.importNptelCourse = catchAsync(async (req, res, next) => {
         syllabus: syllabus || '',
       });
       runsAdded += 1;
+    } else {
+      yearInstance.status = status || yearInstance.status || 'completed';
+      yearInstance.totalWeeks = totalWeeks;
+      yearInstance.syllabus = syllabus || yearInstance.syllabus || '';
+      await yearInstance.save();
     }
+
+    const incomingWeekNumbers = [...new Set((weeks || []).map((week) => week.weekNumber).filter(Boolean))];
+    await removeStaleImportedWeeks(yearInstance._id, incomingWeekNumbers);
 
     for (const weekPayload of weeks) {
       const existing = await Week.findOne({ yearInstanceId: yearInstance._id, weekNumber: weekPayload.weekNumber });
 
       if (existing) {
-        const hasNewMaterials = (weekPayload.materials || []).length > 0;
-        const existingUrls = (existing.materials || []).map((material) => material.url).sort();
-        const incomingUrls = (weekPayload.materials || []).map((material) => material.url).sort();
-        const materialsChanged =
-          existingUrls.length !== incomingUrls.length ||
-          existingUrls.some((url, index) => url !== incomingUrls[index]);
-        const shouldRefreshWeek =
-          hasNewMaterials &&
-          (
-            !existing.materials ||
-            existing.materials.length === 0 ||
-            materialsChanged
-          );
-
-        if (shouldRefreshWeek) {
-          existing.title = sanitizeInput(weekPayload.title);
-          existing.description = sanitizeInput(weekPayload.description || existing.description || '');
-          existing.set('topicsOverview', weekPayload.topicsOverview || existing.topicsOverview || []);
-          existing.set('materials', weekPayload.materials || []);
-          existing.set('pdfLinks', weekPayload.pdfLinks || existing.pdfLinks || []);
-          existing.set('pyqLinks', weekPayload.pyqLinks || existing.pyqLinks || []);
-          existing.markModified('topicsOverview');
-          existing.markModified('materials');
-          existing.markModified('pdfLinks');
-          existing.markModified('pyqLinks');
-          await existing.save();
-        }
+        existing.title = sanitizeInput(weekPayload.title);
+        existing.description = sanitizeInput(weekPayload.description || '');
+        existing.set('topicsOverview', weekPayload.topicsOverview || []);
+        existing.set('materials', weekPayload.materials || []);
+        existing.set('pdfLinks', weekPayload.pdfLinks || []);
+        existing.set('pyqLinks', weekPayload.pyqLinks || []);
+        existing.markModified('topicsOverview');
+        existing.markModified('materials');
+        existing.markModified('pdfLinks');
+        existing.markModified('pyqLinks');
+        await existing.save();
         continue;
       }
 

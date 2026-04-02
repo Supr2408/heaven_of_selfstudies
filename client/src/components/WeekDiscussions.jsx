@@ -1,24 +1,63 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, ChevronDown, ChevronUp, Heart, Loader2, MessageCircle, Send } from 'lucide-react';
+import {
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  Heart,
+  Link as LinkIcon,
+  Loader2,
+  MessageCircle,
+  Send,
+  StickyNote,
+} from 'lucide-react';
 import { resourceAPI } from '@/lib/api';
 import useStore from '@/store/useStore';
+
+const CATEGORY_META = {
+  discussion: {
+    label: 'Discussion',
+    accent: 'bg-slate-100 text-slate-700',
+    icon: MessageCircle,
+    prompt: 'Ask a doubt, share a thought, or start a discussion thread.',
+  },
+  note: {
+    label: 'Notes',
+    accent: 'bg-amber-100 text-amber-700',
+    icon: StickyNote,
+    prompt: 'Share your own notes or revision summary for this week.',
+  },
+  link: {
+    label: 'Links',
+    accent: 'bg-cyan-100 text-cyan-700',
+    icon: LinkIcon,
+    prompt: 'Drop a useful link such as a reference article or video.',
+  },
+  solution: {
+    label: 'Solution',
+    accent: 'bg-emerald-100 text-emerald-700',
+    icon: Send,
+    prompt: 'Share a trusted solution link or explain the approach clearly.',
+  },
+};
+
+const FILTERS = ['all', 'discussion', 'note', 'link', 'solution'];
 
 const getInitials = (name = '') =>
   name
     .split(' ')
     .filter(Boolean)
-    .map((n) => n[0]?.toUpperCase())
+    .map((part) => part[0]?.toUpperCase())
     .slice(0, 2)
-    .join('') || 'CC';
+    .join('') || 'NH';
 
-const formatRelativeTime = (timestamp) => {
-  if (!timestamp) return 'just now';
-  const date = new Date(timestamp);
-  const diff = Date.now() - date.getTime();
+const formatRelativeTime = (value) => {
+  if (!value) return 'just now';
+  const date = new Date(value);
+  const diffMs = Date.now() - date.getTime();
+  const minutes = Math.floor(diffMs / (1000 * 60));
 
-  const minutes = Math.floor(diff / (1000 * 60));
   if (minutes < 1) return 'just now';
   if (minutes < 60) return `${minutes}m ago`;
 
@@ -37,59 +76,83 @@ export default function WeekDiscussions({ weekId, weekNumber, weekTitle }) {
     isAuthenticated: state.isAuthenticated,
   }));
 
-  const [discussions, setDiscussions] = useState([]);
-  const [expandedThread, setExpandedThread] = useState(null);
-  const [newDiscussion, setNewDiscussion] = useState({ title: '', content: '' });
-  const [showNewForm, setShowNewForm] = useState(false);
-  const [replyText, setReplyText] = useState({});
+  const [resources, setResources] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState('');
+  const [showComposer, setShowComposer] = useState(false);
+  const [expandedThread, setExpandedThread] = useState(null);
+  const [selectedFilter, setSelectedFilter] = useState('all');
   const [posting, setPosting] = useState(false);
-  const [replyingTo, setReplyingTo] = useState({});
+  const [replying, setReplying] = useState({});
   const [voting, setVoting] = useState({});
+  const [replyText, setReplyText] = useState({});
+  const [newPost, setNewPost] = useState({
+    type: 'discussion',
+    title: '',
+    content: '',
+    url: '',
+  });
 
-  const currentUserId = useMemo(() => user?._id || user?.id || null, [user]);
+  const currentUserId = useMemo(() => user?._id || user?.id || '', [user]);
+  const selectedCategoryMeta = CATEGORY_META[newPost.type];
 
-  const fetchDiscussions = useCallback(async () => {
+  const filteredResources = useMemo(() => {
+    if (selectedFilter === 'all') return resources;
+    return resources.filter((item) => item.type === selectedFilter);
+  }, [resources, selectedFilter]);
+
+  const fetchResources = useCallback(async () => {
     if (!weekId) return;
 
     try {
       setLoading(true);
-      setError(null);
+      setError('');
       const response = await resourceAPI.getResources(weekId, {
-        type: 'discussion',
-        limit: 50,
+        limit: 100,
         sortBy: 'createdAt',
       });
-      setDiscussions(response.data || []);
-    } catch (err) {
-      console.error('Failed to load discussions', err);
-      setError('Unable to load discussions right now.');
+      const sorted = [...(response?.data || [])].sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      );
+      setResources(sorted);
+    } catch {
+      setError('Unable to load the discussion board right now.');
     } finally {
       setLoading(false);
     }
   }, [weekId]);
 
   useEffect(() => {
-    fetchDiscussions();
-  }, [fetchDiscussions]);
+    fetchResources();
+  }, [fetchResources]);
 
   const ensureAuthenticated = () => {
     if (!isAuthenticated) {
-      alert('Please log in to participate in discussions.');
+      alert('Please log in to post or reply.');
       return false;
     }
     return true;
   };
 
-  const handleCreateDiscussion = async () => {
-    if (!weekId || !ensureAuthenticated()) return;
+  const handleCreatePost = async () => {
+    if (!ensureAuthenticated() || !weekId) return;
 
-    const title = newDiscussion.title.trim();
-    const content = newDiscussion.content.trim();
+    const title = newPost.title.trim();
+    const description = newPost.content.trim();
+    const url = newPost.url.trim();
 
-    if (!title || !content) {
-      alert('Please fill in both title and description.');
+    if (!title) {
+      alert('Please add a title for your post.');
+      return;
+    }
+
+    if (!description && newPost.type === 'discussion') {
+      alert('Please describe your discussion clearly.');
+      return;
+    }
+
+    if (['link', 'solution'].includes(newPost.type) && !url) {
+      alert('Please add the material link for this category.');
       return;
     }
 
@@ -98,321 +161,325 @@ export default function WeekDiscussions({ weekId, weekNumber, weekTitle }) {
       await resourceAPI.createResource({
         weekId,
         title,
-        description: content,
-        type: 'discussion',
+        description,
+        type: newPost.type,
+        url: url || undefined,
+        fileType: url ? 'link' : undefined,
       });
-      setNewDiscussion({ title: '', content: '' });
-      setShowNewForm(false);
-      fetchDiscussions();
+      setNewPost({ type: 'discussion', title: '', content: '', url: '' });
+      setShowComposer(false);
+      setSelectedFilter('all');
+      fetchResources();
     } catch (err) {
-      console.error('Failed to create discussion', err);
-      alert(err?.message || 'Unable to create discussion right now.');
+      alert(err?.message || 'Unable to create this post right now.');
     } finally {
       setPosting(false);
     }
   };
 
-  const handleAddReply = async (discussionId) => {
-    if (!weekId || !ensureAuthenticated()) return;
+  const handleReply = async (resourceId) => {
+    if (!ensureAuthenticated()) return;
 
-    const message = replyText[discussionId]?.trim();
-    if (!message) {
+    const text = (replyText[resourceId] || '').trim();
+    if (!text) {
       alert('Reply cannot be empty.');
       return;
     }
 
     try {
-      setReplyingTo((state) => ({ ...state, [discussionId]: true }));
-      await resourceAPI.addComment(discussionId, message);
-      setReplyText((state) => ({ ...state, [discussionId]: '' }));
-      fetchDiscussions();
+      setReplying((state) => ({ ...state, [resourceId]: true }));
+      await resourceAPI.addComment(resourceId, text);
+      setReplyText((state) => ({ ...state, [resourceId]: '' }));
+      fetchResources();
     } catch (err) {
-      console.error('Failed to add reply', err);
-      alert(err?.message || 'Unable to post reply right now.');
+      alert(err?.message || 'Unable to post your reply right now.');
     } finally {
-      setReplyingTo((state) => ({ ...state, [discussionId]: false }));
+      setReplying((state) => ({ ...state, [resourceId]: false }));
     }
   };
 
-  const handleVote = async (discussionId) => {
-    if (!weekId || !ensureAuthenticated()) return;
+  const handleVote = async (resourceId) => {
+    if (!ensureAuthenticated()) return;
 
     try {
-      setVoting((state) => ({ ...state, [discussionId]: true }));
-      await resourceAPI.upvoteResource(discussionId);
-      fetchDiscussions();
+      setVoting((state) => ({ ...state, [resourceId]: true }));
+      await resourceAPI.upvoteResource(resourceId);
+      fetchResources();
     } catch (err) {
-      console.error('Failed to vote discussion', err);
-      alert(err?.message || 'Unable to register vote right now.');
+      alert(err?.message || 'Unable to register your vote right now.');
     } finally {
-      setVoting((state) => ({ ...state, [discussionId]: false }));
+      setVoting((state) => ({ ...state, [resourceId]: false }));
     }
-  };
-
-  const renderAvatar = (author) => {
-    if (author?.avatar) {
-      return author.avatar;
-    }
-    return getInitials(author?.name || 'NPTEL');
   };
 
   return (
-    <div className="mt-8 border-t border-slate-200 pt-8">
-      <div className="flex flex-col gap-2 mb-6">
-        <h3 className="text-2xl font-bold text-slate-900">
-          💬 Week {weekNumber || ''} Discussions
-        </h3>
-        {weekTitle && (
-          <p className="text-sm text-slate-500">Focused on {weekTitle}</p>
-        )}
+    <section id="week-discussion-board" className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
+            Discussion Board
+          </p>
+          <h2 className="mt-1 text-3xl font-bold text-slate-900">
+            Week {weekNumber} community space
+          </h2>
+          {weekTitle ? (
+            <p className="mt-2 text-sm text-slate-500">
+              Share notes, useful links, solutions, and discussion points for {weekTitle}.
+            </p>
+          ) : null}
+        </div>
+
+        <button
+          onClick={() => setShowComposer((state) => !state)}
+          className="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+        >
+          {showComposer ? 'Close composer' : 'Add a community post'}
+        </button>
       </div>
 
-      {error && (
-        <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+      {error ? (
+        <div className="mt-5 flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <AlertCircle size={18} />
           {error}
         </div>
-      )}
+      ) : null}
 
-      {!weekId && (
-        <div className="bg-white border border-dashed border-slate-300 rounded-lg p-6 text-center text-slate-600">
-          Select a week to load its dedicated discussion space.
-        </div>
-      )}
-
-      {weekId && (
-        <>
-          <div className="bg-white rounded-lg border border-slate-200 p-6 shadow-sm mb-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold">
-                {getInitials(user?.name || 'You')}
+      {showComposer ? (
+        <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+          <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+            <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">Category</label>
+                <select
+                  value={newPost.type}
+                  onChange={(e) => setNewPost((state) => ({ ...state, type: e.target.value }))}
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                >
+                  {Object.entries(CATEGORY_META).map(([value, meta]) => (
+                    <option key={value} value={value}>
+                      {meta.label}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <button
-                onClick={() => setShowNewForm(!showNewForm)}
-                className="flex-1 px-4 py-2 bg-slate-100 rounded-lg text-slate-600 hover:bg-slate-200 text-left transition-colors"
-              >
-                Start a discussion or ask a question...
-              </button>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+                <p className="font-semibold text-slate-900">{selectedCategoryMeta.label}</p>
+                <p className="mt-2">{selectedCategoryMeta.prompt}</p>
+              </div>
             </div>
 
-            {showNewForm && (
-              <div className="space-y-4 border-t border-slate-200 pt-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-900 mb-2">
-                    Discussion Title
-                  </label>
-                  <input
-                    type="text"
-                    value={newDiscussion.title}
-                    onChange={(e) =>
-                      setNewDiscussion({ ...newDiscussion, title: e.target.value })
-                    }
-                    placeholder="e.g., Strategies for Week assignments"
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-900 mb-2">
-                    Description / Question
-                  </label>
-                  <textarea
-                    value={newDiscussion.content}
-                    onChange={(e) =>
-                      setNewDiscussion({ ...newDiscussion, content: e.target.value })
-                    }
-                    placeholder="Describe your challenge in detail..."
-                    rows="4"
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                  />
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleCreateDiscussion}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center gap-2"
-                  >
-                    {posting && <Loader2 size={16} className="animate-spin" />}
-                    Post Discussion
-                  </button>
-                  <button
-                    onClick={() => setShowNewForm(false)}
-                    className="px-4 py-2 bg-slate-200 text-slate-900 rounded-lg hover:bg-slate-300 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
+            <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">Title</label>
+                <input
+                  value={newPost.title}
+                  onChange={(e) => setNewPost((state) => ({ ...state, title: e.target.value }))}
+                  placeholder="Give this post a clear title"
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
               </div>
-            )}
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  Details
+                </label>
+                <textarea
+                  value={newPost.content}
+                  onChange={(e) => setNewPost((state) => ({ ...state, content: e.target.value }))}
+                  rows={5}
+                  placeholder="Explain what you are sharing so others can understand it quickly."
+                  className="w-full resize-none rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  Link {['link', 'solution'].includes(newPost.type) ? '(required)' : '(optional)'}
+                </label>
+                <input
+                  value={newPost.url}
+                  onChange={(e) => setNewPost((state) => ({ ...state, url: e.target.value }))}
+                  placeholder="https://..."
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={handleCreatePost}
+                  disabled={posting}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {posting ? <Loader2 size={16} className="animate-spin" /> : null}
+                  Publish post
+                </button>
+                <button
+                  onClick={() => setShowComposer(false)}
+                  className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           </div>
+        </div>
+      ) : null}
 
-          <div className="space-y-4">
-            {loading ? (
-              <div className="text-center py-12 bg-white border border-slate-200 rounded-lg text-slate-600">
-                Loading discussions...
-              </div>
-            ) : discussions.length === 0 ? (
-              <div className="text-center py-12 bg-slate-50 rounded-lg border border-slate-200">
-                <p className="text-slate-600 text-lg">
-                  No discussions yet. Be the first to start a conversation!
-                </p>
-              </div>
-            ) : (
-              discussions.map((discussion) => {
-                const replies = discussion.comments || [];
-                const author = discussion.userId;
-                const isUpvoted = currentUserId
-                  ? discussion.upvotes?.some((id) => id?.toString() === currentUserId)
-                  : false;
+      <div className="mt-6 flex flex-wrap gap-2">
+        {FILTERS.map((filter) => (
+          <button
+            key={filter}
+            onClick={() => setSelectedFilter(filter)}
+            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+              selectedFilter === filter
+                ? 'bg-slate-900 text-white'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            {filter === 'all' ? 'All posts' : CATEGORY_META[filter].label}
+          </button>
+        ))}
+      </div>
 
-                return (
-                  <div
-                    key={discussion._id}
-                    className="bg-white rounded-lg border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
-                  >
-                    <div className="p-6">
-                      <div className="flex gap-4">
-                        <div className="flex flex-col items-center gap-2">
-                          <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center text-lg font-semibold">
-                            {renderAvatar(author)}
-                          </div>
-                          <button
-                            onClick={() => handleVote(discussion._id)}
-                            disabled={voting[discussion._id]}
-                            className={`flex items-center gap-1 px-2 py-1 rounded-md text-sm transition-colors ${
-                              isUpvoted
-                                ? 'bg-blue-100 text-blue-600'
-                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                            } ${voting[discussion._id] ? 'opacity-60 cursor-not-allowed' : ''}`}
-                          >
-                            <Heart
-                              size={16}
-                              className={isUpvoted ? 'fill-current' : ''}
-                            />
-                            <span className="text-xs font-semibold">
-                              {discussion.upvotes?.length || 0}
-                            </span>
-                          </button>
-                        </div>
+      <div className="mt-6 space-y-4">
+        {loading ? (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-12 text-center text-slate-600">
+            Loading community posts...
+          </div>
+        ) : filteredResources.length ? (
+          filteredResources.map((resource) => {
+            const category = CATEGORY_META[resource.type] || CATEGORY_META.discussion;
+            const CategoryIcon = category.icon;
+            const replies = resource.comments || [];
+            const isExpanded = expandedThread === resource._id;
+            const hasVoted = currentUserId
+              ? (resource.upvotes || []).some((id) => String(id) === String(currentUserId))
+              : false;
 
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="font-semibold text-slate-900">
-                              {author?.name || 'Anonymous Learner'}
-                            </span>
-                            <span className="text-sm text-slate-500">
-                              {formatRelativeTime(discussion.createdAt)}
-                            </span>
-                          </div>
-
-                          <h4 className="text-lg font-semibold text-slate-900 mb-2">
-                            {discussion.title}
-                          </h4>
-                          <p className="text-slate-700 mb-3">
-                            {discussion.description || 'Shared without additional description.'}
-                          </p>
-
-                          <button
-                            onClick={() =>
-                              setExpandedThread(
-                                expandedThread === discussion._id ? null : discussion._id
-                              )
-                            }
-                            className="flex items-center gap-1 text-sm text-slate-600 hover:text-blue-600 transition-colors font-medium"
-                          >
-                            <MessageCircle size={16} />
-                            {replies.length} replies
-                            {expandedThread === discussion._id ? (
-                              <ChevronUp size={16} />
-                            ) : (
-                              <ChevronDown size={16} />
-                            )}
-                          </button>
-                        </div>
+            return (
+              <article
+                key={resource._id}
+                className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"
+              >
+                <div className="p-5">
+                  <div className="flex gap-4">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
+                        {getInitials(resource.userId?.name || 'Learner')}
                       </div>
+                      <button
+                        onClick={() => handleVote(resource._id)}
+                        disabled={voting[resource._id]}
+                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition ${
+                          hasVoted
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        <Heart size={13} className={hasVoted ? 'fill-current' : ''} />
+                        {resource.upvotes?.length || 0}
+                      </button>
                     </div>
 
-                    {expandedThread === discussion._id && (
-                      <div className="bg-slate-50 border-t border-slate-200">
-                        {replies.length > 0 && (
-                          <div className="p-6 space-y-4 border-b border-slate-200">
-                            {replies.map((reply) => {
-                              const replyAuthor = reply.userId;
-                              return (
-                                <div
-                                  key={reply._id}
-                                  className="flex gap-3 pl-6 border-l-2 border-blue-300"
-                                >
-                                  <div className="w-10 h-10 rounded-full bg-white text-slate-700 flex items-center justify-center text-sm font-semibold">
-                                    {getInitials(replyAuthor?.name || 'Learner')}
-                                  </div>
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className="font-semibold text-slate-900 text-sm">
-                                        {replyAuthor?.name || 'Learner'}
-                                      </span>
-                                      <span className="text-xs text-slate-500">
-                                        {formatRelativeTime(reply.createdAt)}
-                                      </span>
-                                    </div>
-                                    <p className="text-sm text-slate-700">{reply.text}</p>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        <div className="p-6">
-                          <div className="flex gap-3">
-                            <div className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-bold">
-                              {getInitials(user?.name || 'You')}
-                            </div>
-                            <div className="flex-1">
-                              <div className="flex gap-2">
-                                <input
-                                  type="text"
-                                  value={replyText[discussion._id] || ''}
-                                  onChange={(e) =>
-                                    setReplyText({
-                                      ...replyText,
-                                      [discussion._id]: e.target.value,
-                                    })
-                                  }
-                                  placeholder="Write your reply..."
-                                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                                />
-                                <button
-                                  onClick={() => handleAddReply(discussion._id)}
-                                  disabled={replyingTo[discussion._id]}
-                                  className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center"
-                                >
-                                  {replyingTo[discussion._id] ? (
-                                    <Loader2 size={16} className="animate-spin" />
-                                  ) : (
-                                    <Send size={16} />
-                                  )}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-slate-900">
+                          {resource.userId?.name || 'Community member'}
+                        </span>
+                        <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${category.accent}`}>
+                          <CategoryIcon size={12} />
+                          {category.label}
+                        </span>
+                        <span className="text-sm text-slate-500">
+                          {formatRelativeTime(resource.createdAt)}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
 
-          <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm text-slate-700">
-              💡 <strong>Pro Tip:</strong> Upvote helpful discussions, cite resources, and be respectful while
-              sharing your assignment strategies.
-            </p>
+                      <h3 className="mt-3 text-xl font-semibold text-slate-900">{resource.title}</h3>
+                      {resource.description ? (
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-600">
+                          {resource.description}
+                        </p>
+                      ) : null}
+
+                      {resource.url ? (
+                        <a
+                          href={resource.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-4 inline-flex max-w-full items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-blue-700 transition hover:border-blue-200 hover:bg-blue-50"
+                        >
+                          <LinkIcon size={15} />
+                          <span className="truncate">{resource.url}</span>
+                        </a>
+                      ) : null}
+
+                      <button
+                        onClick={() => setExpandedThread(isExpanded ? null : resource._id)}
+                        className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-slate-600 transition hover:text-blue-700"
+                      >
+                        <MessageCircle size={16} />
+                        {replies.length} repl{replies.length === 1 ? 'y' : 'ies'}
+                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {isExpanded ? (
+                  <div className="border-t border-slate-200 bg-slate-50 p-5">
+                    {replies.length ? (
+                      <div className="space-y-4">
+                        {replies.map((reply) => (
+                          <div key={reply._id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="font-semibold text-slate-900">
+                                {reply.userId?.name || 'Learner'}
+                              </span>
+                              <span className="text-slate-500">
+                                {formatRelativeTime(reply.createdAt)}
+                              </span>
+                            </div>
+                            <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">
+                              {reply.text}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-slate-500">No replies yet. Start the thread.</p>
+                    )}
+
+                    <div className="mt-4 flex gap-3">
+                      <input
+                        value={replyText[resource._id] || ''}
+                        onChange={(e) =>
+                          setReplyText((state) => ({ ...state, [resource._id]: e.target.value }))
+                        }
+                        placeholder="Add a reply..."
+                        className="flex-1 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                      <button
+                        onClick={() => handleReply(resource._id)}
+                        disabled={replying[resource._id]}
+                        className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {replying[resource._id] ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                        Reply
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </article>
+            );
+          })
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center text-slate-600">
+            No posts in this category yet. Add the first community contribution for this week.
           </div>
-        </>
-      )}
-    </div>
+        )}
+      </div>
+    </section>
   );
 }

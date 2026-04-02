@@ -14,10 +14,10 @@ export default function WeekPage({ params }) {
     const sampleWeek = {
       id: '1',
       weekNumber: 1,
-      title: 'Course Introduction',
-      course: 'Sample Course',
+      title: 'Introduction to Cloud Computing',
+      course: 'Cloud Computing Fundamentals',
       description:
-        'Learn the fundamentals of this course. Understand key concepts, frameworks, and best practices. Explore real-world applications and case studies.',
+        'Learn the fundamentals of cloud computing, deployment models, and service models. Understand the benefits and challenges of cloud technology.',
       materials: [
         {
           title: 'Lecture Notes Week_01.pdf',
@@ -42,11 +42,11 @@ export default function WeekPage({ params }) {
         },
       ],
       learningOutcomes: [
-        'Understand basic course concepts and terminology',
-        'Learn key frameworks and methodologies',
-        'Explore industry applications',
-        'Develop foundational skills',
-        'Prepare for advanced topics',
+        'Understand basic cloud computing concepts and terminology',
+        'Differentiate between deployment models (public, private, hybrid)',
+        'Compare service models (IaaS, PaaS, SaaS)',
+        'Identify use cases for cloud computing',
+        'Recognize cloud providers and their services',
       ],
       keyTopics: [
         'Cloud Definition',

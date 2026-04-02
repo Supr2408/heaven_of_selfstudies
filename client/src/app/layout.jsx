@@ -4,7 +4,11 @@ import { Metadata } from 'next';
 export const metadata = {
   title: 'NPTEL Hub - Community Learning Platform',
   description: 'Community-driven learning ecosystem for NPTEL learners',
-  viewport: 'width=device-width, initial-scale=1',
+};
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }) {

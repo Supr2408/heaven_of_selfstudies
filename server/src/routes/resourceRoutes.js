@@ -3,6 +3,7 @@ const {
   getResources,
   getResource,
   createResource,
+  createUploadedResource,
   updateResource,
   deleteResource,
   upvoteResource,
@@ -13,6 +14,7 @@ const {
 } = require('../controllers/resourceController');
 const { protectRoute } = require('../middleware/auth');
 const { uploadLimiter, apiLimiter } = require('../middleware/advancedRateLimiter');
+const { uploadCommunityPdf } = require('../middleware/upload');
 
 const router = express.Router();
 
@@ -23,6 +25,7 @@ router.get('/trending/:weekId', getTrendingResources);
 
 // Protected Routes
 router.post('/resources', protectRoute, uploadLimiter, createResource);
+router.post('/resources/upload', protectRoute, uploadLimiter, uploadCommunityPdf, createUploadedResource);
 router.put('/resources/:id', protectRoute, updateResource);
 router.delete('/resources/:id', protectRoute, deleteResource);
 

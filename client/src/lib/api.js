@@ -31,7 +31,13 @@ const apiClient = async (endpoint, options = {}) => {
       };
 
       if (body) {
-        config.body = JSON.stringify(body);
+        const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+        if (isFormData) {
+          delete config.headers['Content-Type'];
+          config.body = body;
+        } else {
+          config.body = JSON.stringify(body);
+        }
       }
 
       const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
@@ -101,6 +107,23 @@ const apiRequest = async (endpoint, options = {}) => {
   return apiClient(endpoint, { ...options, headers });
 };
 
+const apiFormRequest = async (endpoint, formData, options = {}) => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const headers = {
+    ...(options.headers || {}),
+  };
+
+  if (token && options.includeAuth !== false) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  return apiClient(endpoint, {
+    ...options,
+    headers,
+    body: formData,
+  });
+};
+
 // Auth API
 export const authAPI = {
   register: (data) => apiClient('/auth/register', { method: 'POST', body: data }),
@@ -160,6 +183,8 @@ export const resourceAPI = {
   getResource: (id) => apiRequest(`/resources/resource/${id}`),
   getTrendingResources: (weekId) => apiRequest(`/resources/trending/${weekId}`),
   createResource: (data) => apiRequest('/resources/resources', { method: 'POST', body: data }),
+  uploadResourcePdf: (formData) =>
+    apiFormRequest('/resources/resources/upload', formData, { method: 'POST' }),
   updateResource: (id, data) => apiRequest(`/resources/resources/${id}`, { method: 'PUT', body: data }),
   deleteResource: (id) => apiRequest(`/resources/resources/${id}`, { method: 'DELETE' }),
   upvoteResource: (id) => apiRequest(`/resources/resources/${id}/upvote`, { method: 'POST' }),

@@ -1,314 +1,328 @@
 'use client';
 
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AlertCircle, Download } from 'lucide-react';
+import { AlertCircle, MessageCircle, X } from 'lucide-react';
 import WeekDetail from '@/components/WeekDetail';
 import WeekDiscussions from '@/components/WeekDiscussions';
 import ChatRoom from '@/components/ChatRoom';
-import ResourceVault from '@/components/ResourceVault';
 import { yearInstanceAPI } from '@/lib/api';
 import useStore from '@/store/useStore';
 
-const SEMESTER_MONTHS = {
-  'Jan-Apr': ['January', 'February', 'March', 'April'],
-  'July-Oct': ['July', 'August', 'September', 'October'],
+const getCourseId = (yearInstance) =>
+  typeof yearInstance?.courseId === 'string' ? yearInstance.courseId : yearInstance?.courseId?._id;
+
+const sortInstances = (instances = []) =>
+  [...instances].sort((a, b) => {
+    if ((b?.year || 0) !== (a?.year || 0)) {
+      return (b?.year || 0) - (a?.year || 0);
+    }
+    return String(a?.semester || '').localeCompare(String(b?.semester || ''));
+  });
+
+const findBestWeek = (weeks = [], preferredWeekNumber) => {
+  const orderedWeeks = [...weeks].sort((a, b) => (a.weekNumber || 0) - (b.weekNumber || 0));
+
+  if (preferredWeekNumber) {
+    const exactWeek = orderedWeeks.find((item) => item.weekNumber === preferredWeekNumber);
+    if (exactWeek) return exactWeek;
+  }
+
+  return (
+    orderedWeeks.find((item) => (item?.materials || []).length > 0) ||
+    orderedWeeks[0] ||
+    null
+  );
 };
 
-const getSemesterMonths = (semester) => SEMESTER_MONTHS[semester] || ['General'];
-
-const groupWeeksByMonth = (weeks = [], semester) => {
-  if (!weeks.length) return [];
-  const months = getSemesterMonths(semester);
-  const sorted = [...weeks].sort((a, b) => a.weekNumber - b.weekNumber);
-  const weeksPerMonth = Math.max(1, Math.ceil(sorted.length / months.length));
-
-  return months
-    .map((month, index) => {
-      const start = index * weeksPerMonth;
-      const end = start + weeksPerMonth;
-      return {
-        month,
-        weeks: sorted.slice(start, end),
-      };
-    })
-    .filter((bucket) => bucket.weeks.length > 0);
+const getBatchLabel = (instance) => {
+  if (!instance?.year || !instance?.semester) return 'Select batch';
+  return `${instance.year} - ${instance.semester}`;
 };
 
 export default function WeekPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const {
-    selectedYear,
-    setSelectedYear,
-    setSelectedWeek,
-  } = useStore((state) => ({
+  const { selectedYear, setSelectedWeek, setSelectedYear } = useStore((state) => ({
     selectedYear: state.selectedYear,
-    setSelectedYear: state.setSelectedYear,
     setSelectedWeek: state.setSelectedWeek,
+    setSelectedYear: state.setSelectedYear,
   }));
 
-  const weekId = searchParams?.get('weekId') || null;
-  const providedYearInstanceId = searchParams?.get('yearInstanceId') || null;
+  const weekId = searchParams?.get('weekId') || '';
+  const yearInstanceIdFromQuery = searchParams?.get('yearInstanceId') || '';
 
   const [week, setWeek] = useState(null);
   const [weeks, setWeeks] = useState([]);
   const [activeYearInstance, setActiveYearInstance] = useState(null);
-  const [loadingWeek, setLoadingWeek] = useState(false);
+  const [availableInstances, setAvailableInstances] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [loadingWeeks, setLoadingWeeks] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState('');
+  const [chatOpen, setChatOpen] = useState(false);
 
-  // Track current weekId to prevent race conditions
-  const currentWeekIdRef = useRef(null);
+  const activeYearInstanceId =
+    yearInstanceIdFromQuery || week?.yearInstanceId?._id || selectedYear?._id || '';
 
-  const resolvedYearInstanceId = useMemo(() => {
-    return (
-      providedYearInstanceId ||
-      week?.yearInstanceId?._id ||
-      selectedYear?._id ||
-      null
-    );
-  }, [providedYearInstanceId, week, selectedYear]);
+  const courseId = getCourseId(week?.yearInstanceId || activeYearInstance);
 
-  // Fetch individual week when weekId changes
   useEffect(() => {
-    if (!weekId) {
-      console.log('❌ No weekId provided');
-      setWeek(null);
-      currentWeekIdRef.current = null;
-      return;
-    }
+    const loadWeek = async () => {
+      if (!weekId) {
+        setWeek(null);
+        return;
+      }
 
-    // Skip if we're already fetching this week
-    if (currentWeekIdRef.current === weekId && week?._id === weekId) {
-      console.log('⏸️  Skip: Already have this week');
-      return;
-    }
-
-    currentWeekIdRef.current = weekId;
-    console.log('➡️  SET currentWeekIdRef to:', weekId);
-
-    let isMounted = true;
-
-    const fetchWeek = async () => {
       try {
-        setLoadingWeek(true);
-        setError(null);
-        console.log('🌐 [API CALL] Fetching week with ID:', weekId);
-        
-        // Add timestamp to force fresh fetch (no caching)
-        const url = `/weeks/week/${weekId}?t=${Date.now()}`;
-        const response = await fetch(`http://localhost:5000/api${url}`);
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+        setLoading(true);
+        setError('');
+        const response = await yearInstanceAPI.getWeek(weekId);
+        const nextWeek = response?.data || null;
+        setWeek(nextWeek);
+        setSelectedWeek(nextWeek);
+
+        if (nextWeek?.yearInstanceId) {
+          setActiveYearInstance(nextWeek.yearInstanceId);
+          setSelectedYear(nextWeek.yearInstanceId);
         }
-        
-        const data = await response.json();
-        console.log('📥 [API RESPONSE] Received:', {
-          weekNumber: data.data?.weekNumber,
-          title: data.data?.title,
-          id: data.data?._id
-        });
-        
-        // Only update if still mounted and this is still the requested week
-        if (isMounted && currentWeekIdRef.current === weekId) {
-          console.log('✅ SETTING STATE with week:', data.data?.weekNumber);
-          setWeek(data.data);
-          setSelectedWeek(data.data);
-          if (data.data?.yearInstanceId) {
-            setActiveYearInstance(data.data.yearInstanceId);
-            setSelectedYear(data.data.yearInstanceId);
-          }
-        } else {
-          console.log('⏭️  IGNORING STALE RESPONSE:', {
-            isMounted,
-            currentWeekId: currentWeekIdRef.current,
-            requestedWeekId: weekId,
-            match: currentWeekIdRef.current === weekId
-          });
-        }
-      } catch (err) {
-        if (isMounted && currentWeekIdRef.current === weekId) {
-          console.error('❌ Fetch error:', err);
-          setError('Unable to load this week. Please pick another one.');
-        }
+      } catch {
+        setError('Unable to load this week right now.');
       } finally {
-        if (isMounted) {
-          setLoadingWeek(false);
-        }
+        setLoading(false);
       }
     };
 
-    fetchWeek();
+    loadWeek();
+  }, [setSelectedWeek, setSelectedYear, weekId]);
 
-    return () => {
-      isMounted = false;
-      console.log('🧹 Cleanup for weekId:', weekId);
-    };
-  }, [weekId]);
-
-  // Fetch weeks list for the active year instance
   useEffect(() => {
-    if (!resolvedYearInstanceId) return;
+    const loadYearInstance = async () => {
+      if (!activeYearInstanceId || week?.yearInstanceId?._id === activeYearInstanceId) {
+        return;
+      }
 
-    // Avoid refetching if we already have the weeks for this year
-    const fetchWeeks = async () => {
+      try {
+        const response = await yearInstanceAPI.getYearInstance(activeYearInstanceId);
+        const instance = response?.data || null;
+        setActiveYearInstance(instance);
+        if (instance) {
+          setSelectedYear(instance);
+        }
+      } catch {}
+    };
+
+    loadYearInstance();
+  }, [activeYearInstanceId, setSelectedYear, week]);
+
+  useEffect(() => {
+    const loadWeeks = async () => {
+      if (!activeYearInstanceId) {
+        setWeeks([]);
+        return;
+      }
+
       try {
         setLoadingWeeks(true);
-        const response = await yearInstanceAPI.getWeeks(resolvedYearInstanceId);
-        setWeeks(response.data || []);
-      } catch (err) {
-        console.error('Failed to fetch weeks list:', err);
+        const response = await yearInstanceAPI.getWeeks(activeYearInstanceId);
+        const nextWeeks = (response?.data || []).sort((a, b) => (a.weekNumber || 0) - (b.weekNumber || 0));
+        setWeeks(nextWeeks);
+
+        if (!weekId) {
+          const bestWeek = findBestWeek(nextWeeks);
+          if (bestWeek?._id) {
+            router.replace(`/dashboard/week?weekId=${bestWeek._id}`);
+          }
+        }
+      } catch {
       } finally {
         setLoadingWeeks(false);
       }
     };
 
-    fetchWeeks();
-  }, [resolvedYearInstanceId]);
+    loadWeeks();
+  }, [activeYearInstanceId, router, weekId]);
 
-  // Ensure we have year instance metadata when navigating directly via query
   useEffect(() => {
-    if (!resolvedYearInstanceId) return;
-
-    // Skip if we already have the data from a previous fetch
-    if (activeYearInstance?._id === resolvedYearInstanceId) {
-      return;
-    }
-
-    // Also skip if selectedYear is already set to this ID
-    if (selectedYear?._id === resolvedYearInstanceId) {
-      setActiveYearInstance(selectedYear);
-      return;
-    }
-
-    const fetchYearInstance = async () => {
-      try {
-        const response = await yearInstanceAPI.getYearInstance(resolvedYearInstanceId);
-        setActiveYearInstance(response.data);
-        setSelectedYear(response.data);
-      } catch (err) {
-        console.error('Failed to load year instance details:', err);
+    const loadInstances = async () => {
+      if (!courseId) {
+        setAvailableInstances([]);
+        return;
       }
+
+      try {
+        const response = await yearInstanceAPI.getYearInstances(courseId);
+        setAvailableInstances(sortInstances(response?.data || []));
+      } catch {}
     };
 
-    fetchYearInstance();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedYearInstanceId]);
+    loadInstances();
+  }, [courseId]);
 
-  const handleNavigateToWeek = (targetWeekId) => {
-    if (!targetWeekId) return;
-    const params = new URLSearchParams();
-    params.set('weekId', targetWeekId);
-    router.push(`/dashboard/week?${params.toString()}`);
+  const openWeek = (nextWeekId) => {
+    if (!nextWeekId || nextWeekId === week?._id) return;
+    router.push(`/dashboard/week?weekId=${nextWeekId}`);
   };
 
-  const currentSemester = activeYearInstance?.semester || selectedYear?.semester || 'General';
-  const monthBuckets = groupWeeksByMonth(weeks, currentSemester);
+  const handleBatchChange = async (event) => {
+    const nextInstanceId = event.target.value;
+    if (!nextInstanceId || nextInstanceId === activeYearInstanceId) return;
 
-  const courseIdForChat = week?.yearInstanceId?.courseId?._id || week?.yearInstanceId?.courseId;
-  const courseYearForChat = week?.yearInstanceId?.year || activeYearInstance?.year;
+    try {
+      setError('');
+      const response = await yearInstanceAPI.getWeeks(nextInstanceId);
+      const nextWeeks = response?.data || [];
+      const targetWeek = findBestWeek(nextWeeks, week?.weekNumber);
+
+      if (targetWeek?._id) {
+        router.push(`/dashboard/week?weekId=${targetWeek._id}`);
+        return;
+      }
+
+      router.push(`/dashboard/week?yearInstanceId=${nextInstanceId}`);
+    } catch {
+      setError('Unable to switch the selected batch right now.');
+    }
+  };
+
+  const roomCourseId = courseId || 'nptel-course';
+  const roomYear = activeYearInstance?.year || week?.yearInstanceId?.year || new Date().getFullYear();
+  const openDiscussionBoard = () => {
+    const section = document.getElementById('week-discussion-board');
+    if (section) {
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setChatOpen(false);
+    }
+  };
+
+  const weekButtons = useMemo(
+    () =>
+      weeks.map((item) => ({
+        id: item._id,
+        label: item.weekNumber,
+        active: item._id === week?._id,
+      })),
+    [week?._id, weeks]
+  );
 
   return (
-    <div className="space-y-8">
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2">
-          <AlertCircle size={20} />
+    <div className="mx-auto max-w-6xl space-y-8 pb-24">
+      {error ? (
+        <div className="flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <AlertCircle size={18} />
           {error}
         </div>
-      )}
+      ) : null}
 
-      {/* DEBUG INFO */}
-      <div className="bg-yellow-50 border border-yellow-200 p-3 rounded text-xs text-yellow-800">
-        <span>🔍 DEBUG: Current Week ID={week?._id} | Week #{week?.weekNumber} | Title: {week?.title}</span>
-      </div>
-
-      {loadingWeek ? (
-        <div className="bg-white border border-slate-200 rounded-lg p-8 text-center">
-          <p className="text-slate-600">Loading week details…</p>
+      {loading ? (
+        <div className="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-slate-600 shadow-sm">
+          Loading week content...
         </div>
       ) : week ? (
-        <WeekDetail key={week._id} week={week} />
-      ) : (
-        <div className="bg-slate-50 border border-dashed border-slate-300 rounded-lg p-8 text-center">
-          <p className="text-slate-700">
-            Select a week from the sidebar or pick one from the list below to begin exploring assignments and materials.
-          </p>
-        </div>
-      )}
+        <>
+          <WeekDetail
+            week={week}
+            yearInstance={activeYearInstance || week?.yearInstanceId}
+            navigationSlot={
+              <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
+                      Week Navigation
+                    </p>
+                    <h2 className="mt-1 text-2xl font-bold text-slate-900">
+                      Switch batch or jump to any week
+                    </h2>
+                  </div>
 
-      {week && (
-        <div className="space-y-8">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900 mb-4">Real-time Chat</h2>
-            <ChatRoom
-              weekId={week._id}
-              courseId={courseIdForChat || week?.yearInstanceId?.courseId?._id || ''}
-              year={courseYearForChat || new Date().getFullYear()}
-            />
-          </div>
-
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900 mb-4">Community Vault</h2>
-            <ResourceVault weekId={week._id} />
-          </div>
-
-          <div>
-            <WeekDiscussions weekId={week._id} weekNumber={week.weekNumber} weekTitle={week.title} />
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-slate-900">Browse Weeks</h2>
-          {activeYearInstance && (
-            <span className="text-sm text-slate-500">
-              {activeYearInstance.year} • {activeYearInstance.semester}
-            </span>
-          )}
-        </div>
-
-        {loadingWeeks ? (
-          <div className="bg-white border border-slate-200 rounded-lg p-6 text-center text-slate-600">
-            Loading available weeks…
-          </div>
-        ) : weeks.length === 0 ? (
-          <div className="bg-white border border-slate-200 rounded-lg p-6 text-center text-slate-600">
-            Weeks will appear here once materials are extracted.
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {monthBuckets.map((bucket) => (
-              <div key={`${bucket.month}-${bucket.weeks[0]._id}`} className="bg-white border border-slate-200 rounded-lg">
-                <div className="px-4 py-2 border-b border-slate-100 flex items-center justify-between">
-                  <div className="font-semibold text-slate-900">{bucket.month}</div>
-                  <div className="text-xs text-slate-500">{bucket.weeks.length} week(s)</div>
-                </div>
-
-                <div className="divide-y divide-slate-100">
-                  {bucket.weeks.map((bucketWeek) => (
-                    <button
-                      key={bucketWeek._id}
-                      onClick={() => handleNavigateToWeek(bucketWeek._id)}
-                      className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors flex items-center justify-between gap-4"
+                  <div className="w-full lg:max-w-xs">
+                    <label className="mb-2 block text-sm font-medium text-slate-700">Batch</label>
+                    <select
+                      value={activeYearInstanceId}
+                      onChange={handleBatchChange}
+                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                     >
-                      <div>
-                        <div className="font-semibold text-slate-900">
-                          Week {bucketWeek.weekNumber}: {bucketWeek.title}
-                        </div>
-                        <p className="text-sm text-slate-600">{bucketWeek.description || 'Materials and assignments for this week.'}</p>
-                      </div>
-                      <Download size={18} className="text-slate-400" />
-                    </button>
-                  ))}
+                      {[...(availableInstances.length ? availableInstances : [activeYearInstance].filter(Boolean))].map((instance) => (
+                        <option key={instance._id} value={instance._id}>
+                          {getBatchLabel(instance)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
+
+                <div className="mt-5 overflow-x-auto pb-1">
+                  <div className="flex min-w-max gap-3">
+                    {loadingWeeks ? (
+                      <div className="text-sm text-slate-500">Loading weeks...</div>
+                    ) : (
+                      weekButtons.map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={() => openWeek(item.id)}
+                          className={`rounded-2xl border px-5 py-3 text-sm font-semibold transition ${
+                            item.active
+                              ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
+                              : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-200 hover:bg-blue-50'
+                          }`}
+                        >
+                          Week {item.label}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </section>
+            }
+          />
+
+          <WeekDiscussions weekId={week._id} weekNumber={week.weekNumber} weekTitle={week.title} />
+        </>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-slate-600">
+          Choose a course batch to open its week-wise materials.
+        </div>
+      )}
+
+      {week ? (
+        <>
+          {chatOpen ? (
+            <div className="fixed bottom-24 right-6 z-40 w-[min(460px,calc(100vw-1.5rem))]">
+              <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl shadow-slate-900/15">
+                <div className="flex items-center justify-between border-b border-slate-200 bg-slate-950 px-5 py-4 text-white">
+                  <div>
+                    <p className="text-lg font-semibold">Week {week.weekNumber} Quick Chat</p>
+                    <p className="text-xs text-slate-300">Temporary instant discussion</p>
+                  </div>
+                  <button
+                    onClick={() => setChatOpen(false)}
+                    className="rounded-full border border-white/15 p-2 text-slate-300 transition hover:bg-white/10 hover:text-white"
+                    aria-label="Close quick chat"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <ChatRoom
+                  weekId={week._id}
+                  courseId={roomCourseId}
+                  year={roomYear}
+                  weekNumber={week.weekNumber}
+                  onOpenDiscussion={openDiscussionBoard}
+                />
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
+          ) : null}
+
+          <button
+            onClick={() => setChatOpen((state) => !state)}
+            className="fixed bottom-6 right-6 z-40 flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-xl shadow-blue-500/30 transition hover:scale-[1.03] hover:shadow-2xl"
+            aria-label={chatOpen ? 'Hide quick chat' : 'Open quick chat'}
+            title="Quick chat"
+          >
+            <MessageCircle size={26} />
+          </button>
+        </>
+      ) : null}
     </div>
   );
 }

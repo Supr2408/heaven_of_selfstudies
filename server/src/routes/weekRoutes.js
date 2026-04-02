@@ -14,6 +14,7 @@ const {
   removeMaterialFromWeek,
   updateMaterialsFromNptel,
   getWeekMaterials,
+  proxyWeekMaterialPdf,
 } = require('../controllers/yearInstanceController');
 const { protectRoute, authorize } = require('../middleware/auth');
 
@@ -35,6 +36,7 @@ router.get('/week/:weekId/stats', getWeekStats);
 
 // Material Routes
 router.get('/week/:weekId/materials', getWeekMaterials);
+router.get('/week/:weekId/materials/:materialIndex/pdf', proxyWeekMaterialPdf);
 router.post('/week/:weekId/materials', protectRoute, authorize('admin'), addMaterialToWeek);
 router.delete('/week/:weekId/materials/:materialIndex', protectRoute, authorize('admin'), removeMaterialFromWeek);
 router.post('/week/:weekId/materials/nptel-sync', protectRoute, authorize('admin'), updateMaterialsFromNptel);

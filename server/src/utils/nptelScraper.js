@@ -66,12 +66,24 @@ const fetchWithRetry = async (url, options = {}, retries = RETRY_CONFIG.maxRetri
   }
 };
 
+const MAX_WEEK_NUMBER = 12;
+
 // Week/assignment patterns reused across extractors
 const WEEK_PATTERNS = [
-  /week\s*0*(\d{1,2})/gi,
-  /assignment\s*[-:]?\s*0*(\d{1,2})/gi,
-  /solutions?\s*(?:for\s*)?week\s*0*(\d{1,2})/gi,
+  /\bweek\s*[-:]?\s*0*(\d{1,2})\b/gi,
+  /\bassignment\s*[-:]?\s*0*(\d{1,2})\b/gi,
+  /\bsolutions?\s*(?:for\s*)?week\s*[-:]?\s*0*(\d{1,2})\b/gi,
 ];
+
+const NUMBER_GROUP_PATTERNS = [
+  /\bassignment(?:s)?\s*[-:]?\s*([0-9,\s&.]+?)(?=\b(?:solution|solutions|released|available|uploaded|link|links|$))/gi,
+  /\bweek(?:s)?\s*[-:]?\s*([0-9,\s&.]+?)(?=\b(?:solution|solutions|released|available|uploaded|link|links|$))/gi,
+  /\bsolutions?\s*(?:for\s*)?(?:assignment|week)(?:s)?\s*[-:]?\s*([0-9,\s&.]+?)(?=\b(?:solution|solutions|released|available|uploaded|link|links|$))/gi,
+];
+
+const SOLUTION_CONTEXT_PATTERN = /\b(solution|solutions|released|available|uploaded|pdf|pdfs|answer|answers)\b/i;
+const ASSIGNMENT_CONTEXT_PATTERN = /\b(assignment|assignments|week|weeks)\b/i;
+const DOCUMENT_LINK_PATTERN = /\.(pdf|zip|rar|doc|docx|ppt|pptx)(?:[?#]|$)/i;
 
 /** Extract Google Drive file ID from various Google Drive URL formats */
 const extractDriveFileId = (url) => {
@@ -104,18 +116,94 @@ const cleanCourseTitle = (title = '') =>
     .replace(/\s*-\s*$/g, '')
     .trim();
 
+const normalizeWeekNumber = (value) => {
+  const num = parseInt(value, 10);
+  if (Number.isNaN(num) || num <= 0 || num > MAX_WEEK_NUMBER) {
+    return null;
+  }
+  return num;
+};
+
+const extractNumbersFromGroup = (value = '') =>
+  (value.match(/\d{1,2}/g) || [])
+    .map(normalizeWeekNumber)
+    .filter(Boolean);
+
+const isLikelyDocumentLink = (href = '') => {
+  const lower = href.toLowerCase();
+  if (!lower) return false;
+  if (lower.includes('drive.google.com')) return true;
+  if (DOCUMENT_LINK_PATTERN.test(lower)) return true;
+  if (lower.includes('storage.googleapis.com') || lower.includes('appspot.com')) {
+    return DOCUMENT_LINK_PATTERN.test(lower);
+  }
+  return false;
+};
+
+const isLikelySolutionAnnouncement = (title = '', bodyText = '') => {
+  const combined = `${title} ${bodyText}`.replace(/\s+/g, ' ').trim();
+  if (!combined) return false;
+  if (!ASSIGNMENT_CONTEXT_PATTERN.test(combined)) return false;
+  if (parseAssignmentInfo(combined).length > 0) return true;
+  return SOLUTION_CONTEXT_PATTERN.test(combined);
+};
+
+const extractNearbyLinkContext = (bodyText = '', href = '') => {
+  if (!bodyText || !href) return '';
+  const idx = bodyText.indexOf(href);
+  if (idx < 0) return '';
+  return bodyText.slice(Math.max(0, idx - 140), idx + href.length);
+};
+
+const dedupeLinkEntries = (links = []) => {
+  const seen = new Map();
+
+  links.forEach((link) => {
+    if (!link?.href) return;
+    const existing = seen.get(link.href);
+    if (!existing) {
+      seen.set(link.href, link);
+      return;
+    }
+
+    if (!existing.text && link.text) {
+      seen.set(link.href, link);
+    }
+  });
+
+  return Array.from(seen.values());
+};
+
+const extractDocumentLinksFromHtml = (html = '') => {
+  const rawLinks = html.match(/https?:\/\/[^\s"'<>]+/g) || [];
+  return rawLinks
+    .map((link) => link.replace(/['">]+$/, ''))
+    .filter(isLikelyDocumentLink)
+    .map((href) => ({ href, text: '' }));
+};
+
 /**
  * Extract assignment/week numbers from any text near a Drive link.
  * We look for "Assignment 5", "Assignment-12", "Week 7", or multiple numbers like "7 & 8".
  */
 const parseAssignmentInfo = (text) => {
-  const assignments = new Set();
+  const assignments = [];
+  const seen = new Set();
 
   const pushNum = (n) => {
-    if (!n) return;
-    const num = parseInt(n, 10);
-    if (!Number.isNaN(num)) assignments.add(num);
+    const num = normalizeWeekNumber(n);
+    if (!num || seen.has(num)) return;
+    seen.add(num);
+    assignments.push(num);
   };
+
+  for (const pattern of NUMBER_GROUP_PATTERNS) {
+    const regex = new RegExp(pattern.source, pattern.flags);
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      extractNumbersFromGroup(match[1] || '').forEach(pushNum);
+    }
+  }
 
   for (const pattern of WEEK_PATTERNS) {
     const regex = new RegExp(pattern.source, pattern.flags);
@@ -126,19 +214,10 @@ const parseAssignmentInfo = (text) => {
     }
   }
 
-  // Multi-number patterns like "7 & 8" or "7, 8"
-  const multiMatches = text.match(/(\d+)\s*[,&]\s*(\d+)/g);
-  multiMatches?.forEach((m) => {
-    const nums = m.match(/\d+/g) || [];
-    nums.forEach(pushNum);
-  });
-
-  return Array.from(assignments)
-    .filter((num) => num > 0)
-    .map((num) => ({
+  return assignments.map((num) => ({
     weekNumber: num,
     assignmentNumber: `Assignment-${num}`,
-    }));
+  }));
 };
 
 const extractWeekNumber = (title, bodyText) => {
@@ -147,8 +226,8 @@ const extractWeekNumber = (title, bodyText) => {
       const regex = new RegExp(pattern.source, pattern.flags);
       const match = regex.exec(haystack);
       if (!match) continue;
-      const num = parseInt(match[1] || match[0], 10);
-      if (!Number.isNaN(num)) return num;
+      const num = normalizeWeekNumber(match[1] || match[0]);
+      if (num) return num;
     }
   }
   return 0;
@@ -244,50 +323,65 @@ const scrapeNPTELAnnouncements = async (courseCode) => {
       const rawHtml = block.html || '';
       const block$ = cheerio.load(`<div>${rawHtml}</div>`);
       const bodyText = block$.text().replace(/\s+/g, ' ').trim();
+      if (!isLikelySolutionAnnouncement(block.title, bodyText)) return;
       const weekNumber = extractWeekNumber(block.title, bodyText);
 
       const linksInBlock = [];
       block$('a[href]').each((_, anchor) => {
         const href = normalizeHref(block$(anchor).attr('href'));
         if (!href) return;
-        const isDrive = href.includes('drive.google');
-        const isCloudStorage = href.includes('storage.googleapis.com');
-        const isAppEngine = href.includes('appspot.com');
-        const isPdf = href.toLowerCase().includes('.pdf');
-        // Accept Google Drive, Cloud Storage, AppEngine, or direct PDF links
-        if (!isDrive && !isCloudStorage && !isAppEngine && !isPdf) return;
-        linksInBlock.push(href);
+        if (!isLikelyDocumentLink(href)) return;
+        linksInBlock.push({
+          href,
+          text: block$(anchor).text().replace(/\s+/g, ' ').trim(),
+        });
       });
 
       if (!linksInBlock.length) {
-        const driveMatches = block.html.match(/https:\/\/drive\.google\.com[^\s"'<>]+/g) || [];
-        linksInBlock.push(...driveMatches.map((l) => l.replace(/['">]+$/, '')));
-        
-        const storageMatches = block.html.match(/https:\/\/storage\.googleapis\.com[^\s"'<>]+/g) || [];
-        linksInBlock.push(...storageMatches.map((l) => l.replace(/['">]+$/, '')));
-        
-        const appspotMatches = block.html.match(/https:\/\/[^\s"'<>]*appspot\.com[^\s"'<>]+/g) || [];
-        linksInBlock.push(...appspotMatches.map((l) => l.replace(/['">]+$/, '')));
+        linksInBlock.push(...extractDocumentLinksFromHtml(block.html));
       }
 
-      const assignmentInfo = parseAssignmentInfo(`${block.title} ${bodyText}`);
-      const fallbackInfo = assignmentInfo.length
-        ? assignmentInfo
+      const uniqueLinksInBlock = dedupeLinkEntries(linksInBlock);
+
+      const titleAssignmentInfo = parseAssignmentInfo(block.title);
+      const bodyAssignmentInfo = parseAssignmentInfo(bodyText);
+      const blockAssignmentInfo = titleAssignmentInfo.length
+        ? titleAssignmentInfo
+        : bodyAssignmentInfo;
+      const fallbackInfo = blockAssignmentInfo.length
+        ? blockAssignmentInfo
         : weekNumber > 0
           ? [{ weekNumber, assignmentNumber: `Assignment-${weekNumber}` }]
           : [];
 
-      linksInBlock.forEach((link, index) => {
-        fallbackInfo.forEach((info) => {
+      uniqueLinksInBlock.forEach((link, index) => {
+        const linkContext = extractNearbyLinkContext(bodyText, link.href);
+        const explicitLinkInfo = parseAssignmentInfo(link.text);
+        const contextLinkInfo = parseAssignmentInfo(linkContext);
+        const mappedInfo = uniqueLinksInBlock.length > 1 && titleAssignmentInfo.length === uniqueLinksInBlock.length
+          ? [titleAssignmentInfo[index]]
+          : explicitLinkInfo.length
+            ? explicitLinkInfo
+            : uniqueLinksInBlock.length === 1 && titleAssignmentInfo.length
+              ? titleAssignmentInfo
+              : contextLinkInfo.length === 1
+                ? contextLinkInfo
+                : uniqueLinksInBlock.length > 1 && fallbackInfo.length === uniqueLinksInBlock.length
+            ? [fallbackInfo[index]]
+                : fallbackInfo.length === 1 || uniqueLinksInBlock.length === 1
+                  ? fallbackInfo
+                  : [];
+
+        mappedInfo.forEach((info) => {
           if (!info?.weekNumber || info.weekNumber <= 0) return;
-          const key = `${link}|${info.weekNumber}`;
+          const key = `${link.href}|${info.weekNumber}`;
           if (solutions.some((s) => `${s.driveLink}|${s.weekNumber}` === key)) return;
           solutions.push({
             weekNumber: info.weekNumber,
             assignmentNumber: info.assignmentNumber,
             title: block.title,
-            driveLink: link,
-            driveFileId: extractDriveFileId(link),
+            driveLink: link.href,
+            driveFileId: extractDriveFileId(link.href),
             uploadedDate: new Date(),
             displayOrder: index + 1,
           });

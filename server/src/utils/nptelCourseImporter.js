@@ -396,7 +396,7 @@ const buildPlaceholderWeeks = (count = 12) =>
       weekNumber,
       title: `Week ${String(weekNumber).padStart(2, '0')}`,
       description: `No assignment solution PDF found yet for Week ${weekNumber}.`,
-      topicsOverview: ['Assignment solution branch'],
+      topicsOverview: ['Community contributions can be added for this week'],
       materials: [],
       pdfLinks: [],
       pyqLinks: [],
@@ -404,13 +404,16 @@ const buildPlaceholderWeeks = (count = 12) =>
   });
 
 const buildWeeksFromSolutions = (groupedSolutions, expectedWeekCount = 12) => {
-  const weekNumbers = Array.from(groupedSolutions.keys()).filter((weekNumber) => weekNumber > 0 && groupedSolutions.get(weekNumber).length > 0);
-  
-  // Only create weeks that have actual materials - don't create placeholders
-  if (!weekNumbers.length) return [];
+  const weekNumbers = Array.from(groupedSolutions.keys()).filter(
+    (weekNumber) => weekNumber > 0 && groupedSolutions.get(weekNumber).length > 0
+  );
+  const highestWeek = weekNumbers.length ? Math.max(...weekNumbers) : 0;
+  const totalWeeks = Math.max(expectedWeekCount || 0, highestWeek || 0, 1);
 
-  // Sort week numbers and create weeks only for those that have materials
-  return weekNumbers.sort((a, b) => a - b).map((weekNumber) => {
+  const weeks = buildPlaceholderWeeks(totalWeeks);
+  const weeksByNumber = new Map(weeks.map((week) => [week.weekNumber, week]));
+
+  weekNumbers.sort((a, b) => a - b).forEach((weekNumber) => {
     const rawItems = groupedSolutions.get(weekNumber) || [];
     const seenUrls = new Set();
     const items = rawItems.filter((item) => {
@@ -422,22 +425,21 @@ const buildWeeksFromSolutions = (groupedSolutions, expectedWeekCount = 12) => {
       return true;
     });
 
-    return {
-      weekNumber,
-      title: `Week ${String(weekNumber).padStart(2, '0')}`,
-      description: `Assignment solution PDFs found for Week ${weekNumber}.`,
-      topicsOverview: ['Assignment solution PDFs'],
-      materials: items.map((item, itemIndex) => ({
+    const targetWeek = weeksByNumber.get(weekNumber);
+    if (!targetWeek) return;
+
+    targetWeek.description = `Assignment solution PDFs found for Week ${weekNumber}.`;
+    targetWeek.topicsOverview = ['Assignment solution PDFs'];
+    targetWeek.materials = items.map((item, itemIndex) => ({
         title: item.title || `Week ${weekNumber} Solution ${itemIndex + 1}`,
         type: 'solution',
         url: item.driveFileId ? convertDriveLink(item.driveFileId) : item.driveLink,
         fileType: 'pdf',
         uploadedAt: new Date(),
-      })),
-      pdfLinks: [],
-      pyqLinks: [],
-    };
+      }));
   });
+
+  return weeks;
 };
 
 const importNptelCourse = async ({
@@ -552,15 +554,13 @@ const importNptelCourse = async ({
       }
     }
 
-    const weeks = grouped.size
-      ? buildWeeksFromSolutions(grouped, expectedWeekCount)
-      : []; // Only create weeks if materials actually exist - don't create placeholders
+    const weeks = buildWeeksFromSolutions(grouped, expectedWeekCount);
 
     runsData.push({
       courseCode: runCode || courseCodeNormalized || courseTitle,
       year: runYear,
       semester: runSemester,
-      totalWeeks: weeks.length,
+      totalWeeks: expectedWeekCount,
       status: 'completed',
       syllabus: `${courseTitle} (${runSemester} ${runYear})`,
       weeks,

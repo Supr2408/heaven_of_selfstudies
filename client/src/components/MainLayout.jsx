@@ -87,6 +87,22 @@ export default function MainLayout({ children }) {
       socket.emit('presence-init');
     };
 
+    const syncPresence = () => {
+      if (socket.connected) {
+        socket.emit('presence-sync-request');
+      }
+    };
+
+    const handleWindowFocus = () => {
+      syncPresence();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncPresence();
+      }
+    };
+
     socket.on('presence-stats', handlePresenceStats);
     socket.on('connect', emitPresenceInit);
 
@@ -94,7 +110,14 @@ export default function MainLayout({ children }) {
       emitPresenceInit();
     }
 
+    const syncInterval = window.setInterval(syncPresence, 15000);
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
+      window.clearInterval(syncInterval);
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       socket.off('presence-stats', handlePresenceStats);
       socket.off('connect', emitPresenceInit);
     };

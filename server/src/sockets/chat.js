@@ -81,6 +81,10 @@ function emitGlobalPresence(io) {
   });
 }
 
+function getGlobalPresenceCount() {
+  return globalPresence.size;
+}
+
 function cleanupSession(io, socket) {
   const session = socketSessions.get(socket.id);
   if (!session) return;
@@ -136,21 +140,33 @@ async function authenticateSocketUser(socket) {
   return user;
 }
 
+async function ensureGlobalPresence(io, socket) {
+  const user = await authenticateSocketUser(socket);
+  const userId = String(user._id);
+
+  if (!socket.globalPresenceUserId) {
+    socket.globalPresenceUserId = userId;
+    incrementGlobalPresence(userId);
+  }
+
+  emitGlobalPresence(io);
+}
+
 const initializeSocketIO = (io, socket) => {
   socket.on('presence-init', async () => {
     try {
-      const user = await authenticateSocketUser(socket);
-      const userId = String(user._id);
-
-      if (!socket.globalPresenceUserId) {
-        socket.globalPresenceUserId = userId;
-        incrementGlobalPresence(userId);
-      }
-
-      emitGlobalPresence(io);
+      await ensureGlobalPresence(io, socket);
     } catch (error) {
       console.error('Error initializing global presence:', error);
       socket.emit('chat-error', { message: 'Unable to initialize live presence.' });
+    }
+  });
+
+  socket.on('presence-sync-request', async () => {
+    try {
+      await ensureGlobalPresence(io, socket);
+    } catch (error) {
+      console.error('Error syncing global presence:', error);
     }
   });
 
@@ -359,4 +375,4 @@ const initializeSocketIO = (io, socket) => {
   });
 };
 
-module.exports = { initializeSocketIO };
+module.exports = { initializeSocketIO, getGlobalPresenceCount };

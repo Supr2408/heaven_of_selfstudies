@@ -21,6 +21,8 @@ export const initializeSocket = (userName) => {
 
   socket = io(SOCKET_URL, {
     auth,
+    withCredentials: true,
+    transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,

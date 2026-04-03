@@ -23,6 +23,9 @@ const timelineBadgeClass = (semester = '') => {
   return 'bg-slate-100 text-slate-700 border-slate-200';
 };
 
+// Feature flag: set to 1 to show NPTEL statistics runs preview, 0 to hide it.
+const ENABLE_STATISTICS_RUNS = 0;
+
 export default function CoursesPage() {
   const router = useRouter();
   const bumpContentVersion = useStore((state) => state.bumpContentVersion);
@@ -362,87 +365,89 @@ export default function CoursesPage() {
                   </div>
                 )}
 
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold text-slate-900">Statistics Runs</h3>
-                    <span className="text-sm text-slate-500">{preview.runs.length} run(s)</span>
-                  </div>
+                {ENABLE_STATISTICS_RUNS ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold text-slate-900">Statistics Runs</h3>
+                      <span className="text-sm text-slate-500">{preview.runs.length} run(s)</span>
+                    </div>
 
-                  {!hasGoogleAccess ? (
-                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-                      <div className="flex items-start gap-3">
-                        <div className="rounded-2xl bg-white p-3 text-amber-700 shadow-sm">
-                          <Lock size={18} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-amber-900">
-                            Statistics runs are available after Google sign-in
-                          </p>
-                          <p className="mt-1 text-sm leading-6 text-amber-800">
-                            Sign in with Google to view batch run history, announcement course
-                            codes, and external announcement links for this NPTEL course.
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => router.push('/login')}
-                            className="mt-3 inline-flex items-center gap-2 rounded-xl bg-amber-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-800"
-                          >
-                            Continue with Google
-                            <ArrowRight size={16} />
-                          </button>
+                    {!hasGoogleAccess ? (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                        <div className="flex items-start gap-3">
+                          <div className="rounded-2xl bg-white p-3 text-amber-700 shadow-sm">
+                            <Lock size={18} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-amber-900">
+                              Statistics runs are available after Google sign-in
+                            </p>
+                            <p className="mt-1 text-sm leading-6 text-amber-800">
+                              Sign in with Google to view batch run history, announcement course
+                              codes, and external announcement links for this NPTEL course.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => router.push('/login')}
+                              className="mt-3 inline-flex items-center gap-2 rounded-xl bg-amber-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-800"
+                            >
+                              Continue with Google
+                              <ArrowRight size={16} />
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ) : preview.runs.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
-                      No public statistics runs were found on the course page, so import will rely
-                      on the course outline fallback if announcements are unavailable.
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {preview.runs.map((run) => (
-                        <div
-                          key={`${run.timeline}-${run.courseId}`}
-                          className="rounded-2xl border border-slate-200 p-4"
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <div className="text-sm font-semibold text-slate-900">
-                                {run.timeline || 'Unknown timeline'}
+                    ) : preview.runs.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
+                        No public statistics runs were found on the course page, so import will rely
+                        on the course outline fallback if announcements are unavailable.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {preview.runs.map((run) => (
+                          <div
+                            key={`${run.timeline}-${run.courseId}`}
+                            className="rounded-2xl border border-slate-200 p-4"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-semibold text-slate-900">
+                                  {run.timeline || 'Unknown timeline'}
+                                </div>
+                                <div className="mt-1 font-mono text-sm text-slate-600">
+                                  {run.courseId}
+                                </div>
                               </div>
-                              <div className="mt-1 font-mono text-sm text-slate-600">
-                                {run.courseId}
-                              </div>
+
+                              <span
+                                className={`rounded-full border px-3 py-1 text-xs font-semibold ${timelineBadgeClass(
+                                  run.semester
+                                )}`}
+                              >
+                                {run.semester} {run.year || ''}
+                              </span>
                             </div>
 
-                            <span
-                              className={`rounded-full border px-3 py-1 text-xs font-semibold ${timelineBadgeClass(
-                                run.semester
-                              )}`}
-                            >
-                              {run.semester} {run.year || ''}
-                            </span>
-                          </div>
-
-                          <div className="mt-3 flex flex-wrap gap-3 text-sm">
-                            <div className="rounded-xl bg-slate-100 px-3 py-2 font-mono text-slate-700">
-                              {run.announcementCourseCode}
+                            <div className="mt-3 flex flex-wrap gap-3 text-sm">
+                              <div className="rounded-xl bg-slate-100 px-3 py-2 font-mono text-slate-700">
+                                {run.announcementCourseCode}
+                              </div>
+                              <a
+                                href={run.announcementsUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-slate-700 hover:bg-slate-50"
+                              >
+                                Announcements
+                                <ExternalLink size={14} />
+                              </a>
                             </div>
-                            <a
-                              href={run.announcementsUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-slate-700 hover:bg-slate-50"
-                            >
-                              Announcements
-                              <ExternalLink size={14} />
-                            </a>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </aside>

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
+  Lock,
   BookOpen,
   ExternalLink,
   Loader2,
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react';
 import MainLayout from '@/components/MainLayout';
 import { courseAPI } from '@/lib/api';
+import { isGoogleUser } from '@/lib/user';
 import useStore from '@/store/useStore';
 
 const timelineBadgeClass = (semester = '') => {
@@ -24,6 +26,8 @@ const timelineBadgeClass = (semester = '') => {
 export default function CoursesPage() {
   const router = useRouter();
   const bumpContentVersion = useStore((state) => state.bumpContentVersion);
+  const user = useStore((state) => state.user);
+  const hasGoogleAccess = isGoogleUser(user);
 
   const [query, setQuery] = useState('');
   const [institute, setInstitute] = useState('');
@@ -364,7 +368,32 @@ export default function CoursesPage() {
                     <span className="text-sm text-slate-500">{preview.runs.length} run(s)</span>
                   </div>
 
-                  {preview.runs.length === 0 ? (
+                  {!hasGoogleAccess ? (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                      <div className="flex items-start gap-3">
+                        <div className="rounded-2xl bg-white p-3 text-amber-700 shadow-sm">
+                          <Lock size={18} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-amber-900">
+                            Statistics runs are available after Google sign-in
+                          </p>
+                          <p className="mt-1 text-sm leading-6 text-amber-800">
+                            Sign in with Google to view batch run history, announcement course
+                            codes, and external announcement links for this NPTEL course.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => router.push('/login')}
+                            className="mt-3 inline-flex items-center gap-2 rounded-xl bg-amber-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-800"
+                          >
+                            Continue with Google
+                            <ArrowRight size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : preview.runs.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
                       No public statistics runs were found on the course page, so import will rely
                       on the course outline fallback if announcements are unavailable.

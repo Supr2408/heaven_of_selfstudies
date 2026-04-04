@@ -1,12 +1,25 @@
 const { AppError, catchAsync } = require('../utils/errorHandler');
+const User = require('../models/User');
 const {
   trackStudyActivity,
   getMyTodaySummary,
   getAdminDailySummary,
 } = require('../services/studyAnalyticsService');
+const { getGlobalPresenceSnapshot } = require('../sockets/chat');
 
 const sanitizeText = (value = '', maxLength = 160) =>
   String(value || '').trim().slice(0, maxLength);
+
+const assertInternalAnalyticsAccess = (req, next) => {
+  const expectedSecret = String(process.env.PRIVATE_ANALYTICS_SHARED_SECRET || '').trim();
+  const providedSecret = sanitizeText(req.header('x-analytics-shared-secret') || '', 200);
+
+  if (!expectedSecret || providedSecret !== expectedSecret) {
+    return next(new AppError('Invalid internal analytics secret.', 401));
+  }
+
+  return true;
+};
 
 exports.trackStudyActivity = catchAsync(async (req, res, next) => {
   const {
@@ -68,5 +81,53 @@ exports.getAdminDailySummary = catchAsync(async (req, res) => {
   res.status(200).json({
     success: true,
     data: summary,
+  });
+});
+
+exports.getInternalPresenceSummary = catchAsync(async (req, res, next) => {
+  if (!assertInternalAnalyticsAccess(req, next)) {
+    return;
+  }
+
+  const snapshot = getGlobalPresenceSnapshot();
+  const userIds = snapshot.map((entry) => entry.userId).filter(Boolean);
+  const users = userIds.length
+    ? await User.find({ _id: { $in: userIds } })
+      .select('name displayName email authProvider avatar')
+      .lean()
+    : [];
+
+  const usersById = new Map(users.map((user) => [String(user._id), user]));
+  const presentUsers = snapshot
+    .map((entry) => {
+      const user = usersById.get(String(entry.userId));
+      if (!user) {
+        return null;
+      }
+
+      return {
+        userId: String(user._id),
+        name: user.displayName || user.name || 'Learner',
+        email: user.email || '',
+        authProvider: user.authProvider || 'guest',
+        avatar: user.avatar || null,
+        connectionCount: entry.connectionCount || 1,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => {
+      if ((right.connectionCount || 0) !== (left.connectionCount || 0)) {
+        return (right.connectionCount || 0) - (left.connectionCount || 0);
+      }
+
+      return String(left.name || '').localeCompare(String(right.name || ''));
+    });
+
+  res.status(200).json({
+    success: true,
+    data: {
+      activeUsers: presentUsers.length,
+      presentUsers,
+    },
   });
 });

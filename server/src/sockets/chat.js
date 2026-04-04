@@ -85,6 +85,13 @@ function getGlobalPresenceCount() {
   return globalPresence.size;
 }
 
+function getGlobalPresenceSnapshot() {
+  return [...globalPresence.entries()].map(([userId, connectionCount]) => ({
+    userId,
+    connectionCount,
+  }));
+}
+
 function cleanupSession(io, socket) {
   const session = socketSessions.get(socket.id);
   if (!session) return;
@@ -375,4 +382,4 @@ const initializeSocketIO = (io, socket) => {
   });
 };
 
-module.exports = { initializeSocketIO, getGlobalPresenceCount };
+module.exports = { initializeSocketIO, getGlobalPresenceCount, getGlobalPresenceSnapshot };

@@ -278,7 +278,12 @@ exports.getWeek = catchAsync(async (req, res, next) => {
   const { id } = req.params;
 
   const week = await Week.findById(id)
-    .populate('yearInstanceId');
+    .populate({
+      path: 'yearInstanceId',
+      populate: {
+        path: 'courseId',
+      },
+    });
 
   if (!week) {
     return next(new AppError('Week not found', 404));

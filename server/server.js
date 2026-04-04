@@ -21,6 +21,7 @@ const weekRoutes = require('./src/routes/weekRoutes');
 const resourceRoutes = require('./src/routes/resourceRoutes');
 const assignmentRoutes = require('./src/routes/assignmentRoutes');
 const commonDiscussionRoutes = require('./src/routes/commonDiscussionRoutes');
+const studyAnalyticsRoutes = require('./src/routes/studyAnalyticsRoutes');
 
 const app = express();
 
@@ -94,6 +95,7 @@ app.use('/api/weeks', weekRoutes);
 app.use('/api/resources', resourceRoutes);
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/common-discussion', commonDiscussionRoutes);
+app.use('/api/study-analytics', studyAnalyticsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -20,9 +20,19 @@ import {
 } from 'lucide-react';
 import Sidebar from './Sidebar';
 import useStore from '@/store/useStore';
-import { authAPI } from '@/lib/api';
+import { authAPI, studyAnalyticsAPI } from '@/lib/api';
 import { getPublicUserName, isGoogleUser, isGuestLikeUser } from '@/lib/user';
 import { disconnectSocket, initializeSocket } from '@/lib/socket';
+
+const DEFAULT_STUDY_SUMMARY = {
+  totalSeconds: 0,
+  totalMinutes: 0,
+  goalMinutes: 120,
+  progressPercent: 0,
+  courses: [],
+};
+
+const clampPercent = (value) => Math.max(0, Math.min(Number(value) || 0, 100));
 
 export default function MainLayout({ children }) {
   const router = useRouter();
@@ -33,6 +43,7 @@ export default function MainLayout({ children }) {
   const [displayName, setDisplayName] = useState('');
   const [savingAlias, setSavingAlias] = useState(false);
   const [aliasMessage, setAliasMessage] = useState('');
+  const [studySummary, setStudySummary] = useState(DEFAULT_STUDY_SUMMARY);
   const store = useStore();
   const setSidebarOpen = useStore((state) => state.setSidebarOpen);
   const globalActiveUsers = useStore((state) => state.globalActiveUsers);
@@ -97,10 +108,63 @@ export default function MainLayout({ children }) {
 
   useEffect(() => {
     if (!store.authReady || !store.isAuthenticated || !store.user?._id) {
+      setStudySummary(DEFAULT_STUDY_SUMMARY);
       return undefined;
     }
 
-    const socket = initializeSocket(getPublicUserName(store.user));
+    let cancelled = false;
+
+    const loadStudySummary = async () => {
+      try {
+        const response = await studyAnalyticsAPI.getMyTodaySummary({
+          timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+        });
+
+        if (!cancelled) {
+          setStudySummary(response?.data || DEFAULT_STUDY_SUMMARY);
+        }
+      } catch {
+        if (!cancelled) {
+          setStudySummary(DEFAULT_STUDY_SUMMARY);
+        }
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void loadStudySummary();
+      }
+    };
+
+    const handleRefreshEvent = () => {
+      void loadStudySummary();
+    };
+
+    void loadStudySummary();
+
+    const refreshInterval = window.setInterval(() => {
+      void loadStudySummary();
+    }, 60000);
+
+    window.addEventListener('focus', handleRefreshEvent);
+    window.addEventListener('study-analytics:updated', handleRefreshEvent);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(refreshInterval);
+      window.removeEventListener('focus', handleRefreshEvent);
+      window.removeEventListener('study-analytics:updated', handleRefreshEvent);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [store.authReady, store.isAuthenticated, store.user?._id]);
+
+  useEffect(() => {
+    if (!store.authReady || !store.isAuthenticated || !store.user?._id) {
+      return undefined;
+    }
+
+    const socket = initializeSocket(publicName);
     const handlePresenceStats = ({ activeUsers }) => {
       setGlobalActiveUsers(Math.max(Number(activeUsers) || 0, 1));
     };
@@ -143,7 +207,7 @@ export default function MainLayout({ children }) {
       socket.off('presence-stats', handlePresenceStats);
       socket.off('connect', emitPresenceInit);
     };
-  }, [setGlobalActiveUsers, store.authReady, store.isAuthenticated, store.user?._id, store.user?.displayName, store.user?.name]);
+  }, [publicName, setGlobalActiveUsers, store.authReady, store.isAuthenticated, store.user?._id]);
 
   const handleLogout = async () => {
     setLogoutPending(true);
@@ -207,6 +271,11 @@ export default function MainLayout({ children }) {
   };
 
   const userInitial = publicName?.charAt(0)?.toUpperCase() || 'N';
+  const studyProgressPercent = clampPercent(studySummary?.progressPercent);
+  const studyRingStyle = {
+    background: `conic-gradient(rgb(37 99 235) ${studyProgressPercent}%, rgb(226 232 240) ${studyProgressPercent}% 100%)`,
+  };
+  const topStudyCourse = studySummary?.courses?.[0] || null;
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
@@ -271,24 +340,32 @@ export default function MainLayout({ children }) {
                     aria-expanded={menuOpen}
                     aria-haspopup="menu"
                   >
-                    {store.user?.avatar ? (
-                      <img
-                        src={store.user.avatar}
-                        alt={publicName || 'User avatar'}
-                        className="h-9 w-9 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
-                        {userInitial}
+                    <div className="relative flex h-11 w-11 items-center justify-center rounded-full p-[2px]" style={studyRingStyle}>
+                      <div className="flex h-full w-full items-center justify-center rounded-full bg-white">
+                        {store.user?.avatar ? (
+                          <img
+                            src={store.user.avatar}
+                            alt={publicName || 'User avatar'}
+                            className="h-9 w-9 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
+                            {userInitial}
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
 
                     <div className="hidden text-left sm:block">
                       <p className="max-w-40 truncate text-sm font-medium text-slate-800">
                         {publicName}
                       </p>
                       <p className="max-w-40 truncate text-xs text-slate-500">
-                        {isGuestUser ? 'Guest access' : store.user?.email}
+                        {studySummary?.totalMinutes
+                          ? `Today: ${studySummary.totalMinutes} min`
+                          : isGuestUser
+                          ? 'Guest access'
+                          : store.user?.email}
                       </p>
                     </div>
 
@@ -313,6 +390,41 @@ export default function MainLayout({ children }) {
                       </div>
 
                       <div className="space-y-4 p-4">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="relative flex h-14 w-14 items-center justify-center rounded-full p-[3px]" style={studyRingStyle}>
+                              <div className="flex h-full w-full items-center justify-center rounded-full bg-white text-xs font-semibold text-slate-700">
+                                {studyProgressPercent}%
+                              </div>
+                            </div>
+
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-slate-900">Today&apos;s study progress</p>
+                              <p className="mt-1 text-xs leading-5 text-slate-500">
+                                {studySummary.totalMinutes} of {studySummary.goalMinutes} minutes tracked today.
+                              </p>
+                            </div>
+                          </div>
+
+                          {topStudyCourse ? (
+                            <div className="mt-3 rounded-xl border border-blue-100 bg-white px-3 py-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-blue-700">
+                                Most active course today
+                              </p>
+                              <p className="mt-1 text-sm font-medium text-slate-900">
+                                {topStudyCourse.courseTitle}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {topStudyCourse.totalMinutes} minutes{topStudyCourse.lastWeekTitle ? ` - ${topStudyCourse.lastWeekTitle}` : ''}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="mt-3 text-xs leading-5 text-slate-500">
+                              Study-time tracking becomes visible here while you actively read course materials on the platform.
+                            </p>
+                          )}
+                        </div>
+
                         {canParticipate ? (
                           <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                             <div>

@@ -272,4 +272,17 @@ export const commonDiscussionAPI = {
     }),
 };
 
+export const studyAnalyticsAPI = {
+  trackStudyActivity: (payload) =>
+    apiRequest('/study-analytics/track', {
+      method: 'POST',
+      body: payload,
+    }),
+  getMyTodaySummary: ({ timezoneOffsetMinutes = 0 } = {}) => {
+    const params = new URLSearchParams();
+    params.set('timezoneOffsetMinutes', `${timezoneOffsetMinutes}`);
+    return apiRequest(`/study-analytics/me/today?${params.toString()}`);
+  },
+};
+
 export default apiClient;

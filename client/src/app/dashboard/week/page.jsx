@@ -6,6 +6,7 @@ import { AlertCircle, MessageCircle, X } from 'lucide-react';
 import WeekDetail from '@/components/WeekDetail';
 import WeekDiscussions from '@/components/WeekDiscussions';
 import ChatRoom from '@/components/ChatRoom';
+import StudyTimeTracker from '@/components/StudyTimeTracker';
 import { yearInstanceAPI } from '@/lib/api';
 import useStore from '@/store/useStore';
 
@@ -186,6 +187,12 @@ export default function WeekPage() {
 
   const roomCourseId = courseId || 'nptel-course';
   const roomYear = activeYearInstance?.year || week?.yearInstanceId?.year || new Date().getFullYear();
+  const trackedCourseTitle = activeYearInstance?.courseId?.title || '';
+  const trackedCourseId = courseId || '';
+  const trackedRoutePath =
+    typeof window !== 'undefined'
+      ? `${window.location.pathname}${window.location.search}`
+      : '/dashboard/week';
   const openDiscussionBoard = () => {
     const section = document.getElementById('week-discussion-board');
     if (section) {
@@ -206,6 +213,17 @@ export default function WeekPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-24 sm:space-y-8">
+      {week && trackedCourseId && trackedCourseTitle ? (
+        <StudyTimeTracker
+          courseId={trackedCourseId}
+          courseTitle={trackedCourseTitle}
+          weekId={week._id}
+          weekTitle={week.title}
+          yearInstanceId={activeYearInstanceId}
+          routePath={trackedRoutePath}
+        />
+      ) : null}
+
       {error ? (
         <div className="flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <AlertCircle size={18} />

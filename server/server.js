@@ -23,6 +23,13 @@ const assignmentRoutes = require('./src/routes/assignmentRoutes');
 const commonDiscussionRoutes = require('./src/routes/commonDiscussionRoutes');
 
 const app = express();
+
+// When running behind a proxy/load balancer (common in production),
+// trust the first proxy so rate limiting and IP-based logic see the
+// real client address instead of the proxy's IP.
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
 const server = http.createServer(app);
 const io = new SocketIO(server, {
   cors: {

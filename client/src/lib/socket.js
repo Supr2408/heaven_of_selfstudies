@@ -3,6 +3,7 @@ import io from 'socket.io-client';
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000';
 
 let socket = null;
+let lastAuth = null;
 
 /**
  * Initialize Socket.io connection
@@ -12,10 +13,20 @@ export const initializeSocket = (userName) => {
   const auth = { userName, token };
 
   if (socket) {
+    const tokenChanged = !lastAuth || lastAuth.token !== auth.token;
     socket.auth = auth;
-    if (!socket.connected) {
+
+    // If the auth token changed (e.g. guest -> Google login),
+    // force a reconnect so the server re-authenticates the socket
+    // with the latest JWT instead of the old guest token.
+    if (tokenChanged) {
+      socket.disconnect();
+      socket.connect();
+    } else if (!socket.connected) {
       socket.connect();
     }
+
+    lastAuth = auth;
     return socket;
   }
 
@@ -36,6 +47,8 @@ export const initializeSocket = (userName) => {
   socket.on('disconnect', () => {
     console.log('Socket disconnected');
   });
+
+   lastAuth = auth;
 
   return socket;
 };

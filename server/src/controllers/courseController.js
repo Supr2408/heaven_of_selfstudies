@@ -569,11 +569,16 @@ exports.importNptelCourse = catchAsync(async (req, res, next) => {
       });
       runsAdded += 1;
     } else {
-    importedYearInstanceIds.push(yearInstance._id);
+      importedYearInstanceIds.push(yearInstance._id);
       yearInstance.status = status || yearInstance.status || 'completed';
       yearInstance.totalWeeks = totalWeeks;
       yearInstance.syllabus = syllabus || yearInstance.syllabus || '';
       await yearInstance.save();
+    }
+
+    // Track all imported or updated year instances for the current import
+    if (!importedYearInstanceIds.includes(String(yearInstance._id))) {
+      importedYearInstanceIds.push(yearInstance._id);
     }
 
     const incomingWeekNumbers = [...new Set((weeks || []).map((week) => week.weekNumber).filter(Boolean))];
@@ -604,7 +609,14 @@ exports.importNptelCourse = catchAsync(async (req, res, next) => {
         description: sanitizeInput(weekPayload.description || ''),
         topicsOverview: weekPayload.topicsOverview || [],
         materials: weekPayload.materials || [],
-  // If a user is authenticated, add these runs to their personal library
+        pdfLinks: weekPayload.pdfLinks || [],
+        pyqLinks: weekPayload.pyqLinks || [],
+      });
+      weeksAdded += 1;
+    }
+  }
+
+  // If a user is authenticated, add all imported runs to their personal library
   if (req.user && importedYearInstanceIds.length) {
     await User.findByIdAndUpdate(
       req.user._id,
@@ -613,12 +625,6 @@ exports.importNptelCourse = catchAsync(async (req, res, next) => {
       },
       { new: true }
     );
-  }
-        pdfLinks: weekPayload.pdfLinks || [],
-        pyqLinks: weekPayload.pyqLinks || [],
-      });
-      weeksAdded += 1;
-    }
   }
 
   const latestImportedRun = runsData[runsData.length - 1] || null;

@@ -15,7 +15,7 @@ export default function DashboardMissionPanel() {
             Why this platform exists
           </p>
           <h2 className="text-2xl font-bold leading-snug md:text-3xl">
-            Free NPTEL Assignments, PYQs & Discussions —
+            Free previous-year NPTEL assignments & discussions —
             <span className="block text-sky-200">Built for students, by students.</span>
           </h2>
         </header>
@@ -31,9 +31,9 @@ export default function DashboardMissionPanel() {
               <BookOpen size={18} />
             </div>
             <div>
-              <p className="text-sm font-semibold">PYQs & weekly assignments</p>
+              <p className="text-sm font-semibold">Previous-year assignments by week</p>
               <p className="mt-1 text-xs text-sky-100/80">
-                Browse previous year questions and week-wise answers in one place.
+                Browse previous year assignment questions and week-wise solutions in one place.
               </p>
             </div>
           </div>
@@ -57,7 +57,7 @@ export default function DashboardMissionPanel() {
             <div>
               <p className="text-sm font-semibold">Smart search across courses</p>
               <p className="mt-1 text-xs text-sky-100/80">
-                Quickly jump to topics, weeks, or assignments from any run.
+                Quickly jump to topics, weeks, or previous-year assignments from any run.
               </p>
             </div>
           </div>

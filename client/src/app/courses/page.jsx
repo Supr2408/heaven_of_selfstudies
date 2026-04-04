@@ -166,10 +166,11 @@ export default function CoursesPage() {
               Live NPTEL discovery
             </div>
             <h1 className="text-4xl font-bold tracking-tight text-slate-900">
-              Search any NPTEL course and bring its assignment solutions into the Hub
+              Search any NPTEL course and bring its previous-year assignment solutions into the Hub
             </h1>
             <p className="text-lg text-slate-600">
-              This p              and create the same subject, batch, week, and solution-branch structure used by the
+              Find a course, pull in its older assignment solutions from the NPTEL announcements,
+              and create the same subject, batch, week, and solution-branch structure used by the
               existing Cloud Computing section.
             </p>
           </div>

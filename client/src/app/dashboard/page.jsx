@@ -206,7 +206,7 @@ export default function Dashboard() {
                 Weeks available
               </p>
               <p className="mt-3 text-3xl font-bold text-slate-900">{totalWeeks}</p>
-              <p className="mt-1 text-xs text-slate-500">Every available week can link to assignments, notes, and discussions.</p>
+              <p className="mt-1 text-xs text-slate-500">Every available week can link to previous-year assignments, notes, and discussions.</p>
             </div>
           </div>
 

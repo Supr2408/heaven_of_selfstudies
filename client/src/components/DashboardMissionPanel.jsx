@@ -117,7 +117,7 @@ export default function DashboardMissionPanel() {
 
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
           <Link
-            href="/assignments"
+            href="/courses"
             className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-100"
           >
             Explore free materials

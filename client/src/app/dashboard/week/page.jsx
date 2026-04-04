@@ -205,7 +205,7 @@ export default function WeekPage() {
   );
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8 pb-24">
+    <div className="mx-auto max-w-6xl space-y-6 pb-24 sm:space-y-8">
       {error ? (
         <div className="flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <AlertCircle size={18} />
@@ -223,13 +223,13 @@ export default function WeekPage() {
             week={week}
             yearInstance={activeYearInstance || week?.yearInstanceId}
             navigationSlot={
-              <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
                       Week Navigation
                     </p>
-                    <h2 className="mt-1 text-2xl font-bold text-slate-900">
+                    <h2 className="mt-1 text-xl font-bold text-slate-900 sm:text-2xl">
                       Switch batch or jump to any week
                     </h2>
                   </div>
@@ -239,7 +239,7 @@ export default function WeekPage() {
                     <select
                       value={activeYearInstanceId}
                       onChange={handleBatchChange}
-                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:py-3"
                     >
                       {[...(availableInstances.length ? availableInstances : [activeYearInstance].filter(Boolean))].map((instance) => (
                         <option key={instance._id} value={instance._id}>
@@ -251,7 +251,7 @@ export default function WeekPage() {
                 </div>
 
                 <div className="mt-5 overflow-x-auto pb-1">
-                  <div className="flex min-w-max gap-3">
+                  <div className="flex min-w-max gap-2 sm:gap-3">
                     {loadingWeeks ? (
                       <div className="text-sm text-slate-500">Loading weeks...</div>
                     ) : (
@@ -259,7 +259,7 @@ export default function WeekPage() {
                         <button
                           key={item.id}
                           onClick={() => openWeek(item.id)}
-                          className={`rounded-2xl border px-5 py-3 text-sm font-semibold transition ${
+                          className={`rounded-2xl border px-4 py-2.5 text-sm font-semibold transition sm:px-5 sm:py-3 ${
                             item.active
                               ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
                               : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-200 hover:bg-blue-50'

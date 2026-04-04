@@ -100,16 +100,16 @@ export default function WeekDetail({ week, yearInstance, navigationSlot = null }
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-500 px-6 py-6 text-white shadow-sm">
+      <div className="rounded-2xl bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-500 px-5 py-5 text-white shadow-sm sm:px-6 sm:py-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight">{week.title}</h1>
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{week.title}</h1>
             <p className="max-w-3xl text-sm text-blue-50 md:text-base">
               {week.description || `Study materials for ${week.title}.`}
             </p>
           </div>
           {batchLabel ? (
-            <div className="inline-flex items-center rounded-full bg-white/15 px-4 py-2 text-sm font-semibold text-white backdrop-blur">
+            <div className="inline-flex items-center rounded-full bg-white/15 px-3 py-1.5 text-sm font-semibold text-white backdrop-blur sm:px-4 sm:py-2">
               {batchLabel}
             </div>
           ) : null}
@@ -119,7 +119,7 @@ export default function WeekDetail({ week, yearInstance, navigationSlot = null }
       {navigationSlot}
 
       <div className="space-y-4">
-        <h2 className="text-2xl font-bold text-slate-900">Materials</h2>
+        <h2 className="text-xl font-bold text-slate-900 sm:text-2xl">Materials</h2>
 
         {previewUrl ? (
           <StudyPdfViewer

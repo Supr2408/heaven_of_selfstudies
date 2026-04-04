@@ -80,6 +80,14 @@ const userSchema = new mongoose.Schema(
         ref: 'Resource',
       },
     ],
+    // Personal study library: which NPTEL runs (year instances)
+    // this user has added/imported into their account.
+    libraryYearInstances: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'YearInstance',
+      },
+    ],
     createdAt: {
       type: Date,
       default: Date.now,

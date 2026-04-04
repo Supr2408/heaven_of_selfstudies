@@ -1,5 +1,6 @@
 const Subject = require('../models/Subject');
 const Course = require('../models/Course');
+const User = require('../models/User');
 const YearInstance = require('../models/YearInstance');
 const Week = require('../models/Week');
 const Resource = require('../models/Resource');
@@ -546,6 +547,7 @@ exports.importNptelCourse = catchAsync(async (req, res, next) => {
 
   let weeksAdded = 0;
   let runsAdded = 0;
+  const importedYearInstanceIds = [];
   for (const run of runsData) {
     const { year, semester, status, syllabus, weeks } = run;
     const totalWeeks = run.totalWeeks || (weeks || []).length || 12;
@@ -567,6 +569,7 @@ exports.importNptelCourse = catchAsync(async (req, res, next) => {
       });
       runsAdded += 1;
     } else {
+    importedYearInstanceIds.push(yearInstance._id);
       yearInstance.status = status || yearInstance.status || 'completed';
       yearInstance.totalWeeks = totalWeeks;
       yearInstance.syllabus = syllabus || yearInstance.syllabus || '';
@@ -601,6 +604,16 @@ exports.importNptelCourse = catchAsync(async (req, res, next) => {
         description: sanitizeInput(weekPayload.description || ''),
         topicsOverview: weekPayload.topicsOverview || [],
         materials: weekPayload.materials || [],
+  // If a user is authenticated, add these runs to their personal library
+  if (req.user && importedYearInstanceIds.length) {
+    await User.findByIdAndUpdate(
+      req.user._id,
+      {
+        $addToSet: { libraryYearInstances: { $each: importedYearInstanceIds } },
+      },
+      { new: true }
+    );
+  }
         pdfLinks: weekPayload.pdfLinks || [],
         pyqLinks: weekPayload.pyqLinks || [],
       });

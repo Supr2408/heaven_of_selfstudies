@@ -103,12 +103,32 @@ const sendPdfBuffer = (res, buffer) => {
 };
 
 /**
- * Get all year instances (optionally filtered by course)
+ * Get all year instances for the current view.
+ *
+ * - If `courseId` is provided, return all runs for that course (admin/utility).
+ * - If a user is authenticated and no courseId is provided, return only the
+ *   year instances that are in their personal library.
+ * - Guests (no user) fall back to the shared/global library.
  */
 exports.getAllYearInstances = catchAsync(async (req, res) => {
   const { courseId } = req.query;
 
-  const filter = courseId ? { courseId } : {};
+  let filter = {};
+  if (courseId) {
+    filter.courseId = courseId;
+  } else if (req.user && Array.isArray(req.user.libraryYearInstances)) {
+    const libraryIds = req.user.libraryYearInstances.map((id) => String(id));
+
+    if (libraryIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        count: 0,
+        data: [],
+      });
+    }
+
+    filter._id = { $in: libraryIds };
+  }
 
   const instances = await YearInstance.find(filter)
     .populate('courseId')

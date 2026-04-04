@@ -16,12 +16,14 @@ const {
   getWeekMaterials,
   proxyWeekMaterialPdf,
 } = require('../controllers/yearInstanceController');
-const { protectRoute, authorize } = require('../middleware/auth');
+const { protectRoute, authorize, optionalAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
 // Year Instance Routes
-router.get('/year-instances', getAllYearInstances);
+// When a user is authenticated, scope year instances to their library
+// via optionalAuth; guests still see the shared library.
+router.get('/year-instances', optionalAuth, getAllYearInstances);
 router.get('/year-instances/course/:courseId', getYearInstances);
 router.get('/year-instance/:id', getYearInstance);
 router.post('/year-instances', protectRoute, authorize('admin'), createYearInstance);

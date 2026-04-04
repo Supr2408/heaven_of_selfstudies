@@ -158,14 +158,18 @@ export default function StudyPdfViewer({ src, storageKey }) {
     return () => observer.disconnect();
   }, []);
 
-  const baseWidth = Math.max(320, Math.min((viewportWidth || 960) - 32, 980));
-  const renderWidth = Math.round(baseWidth * zoom);
+  const isCompactViewport = (viewportWidth || 0) > 0 && viewportWidth < 640;
+  const editorEnabled = !isCompactViewport;
+  const mobileReadingZoom = isCompactViewport ? 1.35 : 1;
+  const baseWidth = isCompactViewport
+    ? Math.max(340, (viewportWidth || 360) - 8)
+    : Math.max(320, Math.min((viewportWidth || 960) - 32, 980));
+  const effectiveZoom = editorEnabled ? zoom : mobileReadingZoom;
+  const renderWidth = Math.round(baseWidth * effectiveZoom);
   const renderHeight =
     pageSize.width && pageSize.height
       ? Math.round((pageSize.height / pageSize.width) * renderWidth)
       : 0;
-  const isCompactViewport = (viewportWidth || 0) > 0 && viewportWidth < 640;
-  const editorEnabled = !isCompactViewport;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -393,9 +397,9 @@ export default function StudyPdfViewer({ src, storageKey }) {
 
       <div
         ref={shellRef}
-        className="overflow-auto bg-slate-900/95 px-2 py-3 sm:px-4 sm:py-5"
+        className="overflow-auto bg-slate-900/95 px-1 py-2 sm:px-4 sm:py-5"
         style={{
-          height: isCompactViewport ? 'calc(100dvh - 15rem)' : '82vh',
+          height: isCompactViewport ? 'calc(100dvh - 11rem)' : '82vh',
           minHeight: isCompactViewport ? '420px' : '720px',
         }}
       >

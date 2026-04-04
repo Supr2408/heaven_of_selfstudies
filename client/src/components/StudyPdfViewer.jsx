@@ -165,6 +165,7 @@ export default function StudyPdfViewer({ src, storageKey }) {
       ? Math.round((pageSize.height / pageSize.width) * renderWidth)
       : 0;
   const isCompactViewport = (viewportWidth || 0) > 0 && viewportWidth < 640;
+  const editorEnabled = !isCompactViewport;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -186,6 +187,8 @@ export default function StudyPdfViewer({ src, storageKey }) {
   }, [annotations, currentPage, renderHeight, renderWidth]);
 
   const startStroke = (event) => {
+    if (!editorEnabled) return;
+
     if (!canvasRef.current || !tool || tool === 'eraser') {
       if (tool !== 'eraser') return;
       const bounds = canvasRef.current.getBoundingClientRect();
@@ -217,6 +220,7 @@ export default function StudyPdfViewer({ src, storageKey }) {
   };
 
   const extendStroke = (event) => {
+    if (!editorEnabled) return;
     if (!canvasRef.current || !drawingRef.current) return;
 
     const bounds = canvasRef.current.getBoundingClientRect();
@@ -265,6 +269,7 @@ export default function StudyPdfViewer({ src, storageKey }) {
   };
 
   const toggleTool = (toolName) => {
+    if (!editorEnabled) return;
     setTool((current) => (current === toolName ? null : toolName));
   };
 
@@ -272,51 +277,53 @@ export default function StudyPdfViewer({ src, storageKey }) {
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-800 bg-slate-950 px-2.5 py-2.5 text-white sm:px-4 sm:py-3">
         <div className="flex flex-col gap-2.5 sm:gap-3">
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-          {Object.entries(TOOL_CONFIG).map(([toolName, config]) => {
-            const Icon = toolName === 'pen' ? PenLine : Highlighter;
-            return (
+          {editorEnabled ? (
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              {Object.entries(TOOL_CONFIG).map(([toolName, config]) => {
+                const Icon = toolName === 'pen' ? PenLine : Highlighter;
+                return (
+                  <button
+                    key={toolName}
+                    onClick={() => toggleTool(toolName)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-medium transition sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
+                      tool === toolName
+                        ? 'border-blue-400 bg-blue-500/20 text-white'
+                        : 'border-white/15 bg-white/5 text-slate-200 hover:bg-white/10'
+                    }`}
+                  >
+                    <Icon size={14} className="sm:h-[15px] sm:w-[15px]" />
+                    {config.label}
+                  </button>
+                );
+              })}
+
               <button
-                key={toolName}
-                onClick={() => toggleTool(toolName)}
+                onClick={() => toggleTool('eraser')}
                 className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-medium transition sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
-                  tool === toolName
+                  tool === 'eraser'
                     ? 'border-blue-400 bg-blue-500/20 text-white'
                     : 'border-white/15 bg-white/5 text-slate-200 hover:bg-white/10'
                 }`}
               >
-                <Icon size={14} className="sm:h-[15px] sm:w-[15px]" />
-                {config.label}
+                <Eraser size={14} className="sm:h-[15px] sm:w-[15px]" />
+                Eraser
               </button>
-            );
-          })}
 
-          <button
-            onClick={() => toggleTool('eraser')}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-medium transition sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
-              tool === 'eraser'
-                ? 'border-blue-400 bg-blue-500/20 text-white'
-                : 'border-white/15 bg-white/5 text-slate-200 hover:bg-white/10'
-            }`}
-          >
-            <Eraser size={14} className="sm:h-[15px] sm:w-[15px]" />
-            Eraser
-          </button>
-
-          <div className="ml-0.5 flex items-center gap-1.5 sm:ml-1 sm:gap-2">
-            {COLOR_OPTIONS.map((value) => (
-              <button
-                key={value}
-                onClick={() => setColor(value)}
-                className={`h-7 w-7 rounded-full border-2 transition sm:h-9 sm:w-9 ${
-                  color === value ? 'border-white scale-110' : 'border-transparent'
-                }`}
-                style={{ backgroundColor: value }}
-                aria-label={`Select ${value} ink color`}
-              />
-            ))}
-          </div>
-        </div>
+              <div className="ml-0.5 flex items-center gap-1.5 sm:ml-1 sm:gap-2">
+                {COLOR_OPTIONS.map((value) => (
+                  <button
+                    key={value}
+                    onClick={() => setColor(value)}
+                    className={`h-7 w-7 rounded-full border-2 transition sm:h-9 sm:w-9 ${
+                      color === value ? 'border-white scale-110' : 'border-transparent'
+                    }`}
+                    style={{ backgroundColor: value }}
+                    aria-label={`Select ${value} ink color`}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <button
@@ -341,41 +348,45 @@ export default function StudyPdfViewer({ src, storageKey }) {
               <ChevronRight size={14} className="sm:h-[15px] sm:w-[15px]" />
             </button>
 
-            <button
-              onClick={() => setZoom((current) => Math.max(0.8, Number((current - 0.1).toFixed(1))))}
-              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 transition hover:bg-white/10 sm:px-3 sm:py-2 sm:text-sm"
-              aria-label="Zoom out"
-            >
-              <ZoomOut size={14} className="sm:h-[15px] sm:w-[15px]" />
-            </button>
+            {editorEnabled ? (
+              <>
+                <button
+                  onClick={() => setZoom((current) => Math.max(0.8, Number((current - 0.1).toFixed(1))))}
+                  className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 transition hover:bg-white/10 sm:px-3 sm:py-2 sm:text-sm"
+                  aria-label="Zoom out"
+                >
+                  <ZoomOut size={14} className="sm:h-[15px] sm:w-[15px]" />
+                </button>
 
-            <div className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 sm:px-3 sm:py-2 sm:text-sm">
-              {Math.round(zoom * 100)}%
-            </div>
+                <div className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 sm:px-3 sm:py-2 sm:text-sm">
+                  {Math.round(zoom * 100)}%
+                </div>
 
-            <button
-              onClick={() => setZoom((current) => Math.min(2.2, Number((current + 0.1).toFixed(1))))}
-              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 transition hover:bg-white/10 sm:px-3 sm:py-2 sm:text-sm"
-              aria-label="Zoom in"
-            >
-              <ZoomIn size={14} className="sm:h-[15px] sm:w-[15px]" />
-            </button>
+                <button
+                  onClick={() => setZoom((current) => Math.min(2.2, Number((current + 0.1).toFixed(1))))}
+                  className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 transition hover:bg-white/10 sm:px-3 sm:py-2 sm:text-sm"
+                  aria-label="Zoom in"
+                >
+                  <ZoomIn size={14} className="sm:h-[15px] sm:w-[15px]" />
+                </button>
 
-            <button
-              onClick={undoLastStroke}
-              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 transition hover:bg-white/10 sm:px-3 sm:py-2 sm:text-sm"
-            >
-              <RotateCcw size={14} className="sm:h-[15px] sm:w-[15px]" />
-              {!isCompactViewport ? 'Undo' : null}
-            </button>
+                <button
+                  onClick={undoLastStroke}
+                  className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 transition hover:bg-white/10 sm:px-3 sm:py-2 sm:text-sm"
+                >
+                  <RotateCcw size={14} className="sm:h-[15px] sm:w-[15px]" />
+                  {!isCompactViewport ? 'Undo' : null}
+                </button>
 
-            <button
-              onClick={clearCurrentPage}
-              className="inline-flex items-center gap-1 rounded-full border border-red-400/40 bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-100 transition hover:bg-red-500/20 sm:px-3 sm:py-2 sm:text-sm"
-            >
-              <Trash2 size={14} className="sm:h-[15px] sm:w-[15px]" />
-              {!isCompactViewport ? 'Clear Page' : null}
-            </button>
+                <button
+                  onClick={clearCurrentPage}
+                  className="inline-flex items-center gap-1 rounded-full border border-red-400/40 bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-100 transition hover:bg-red-500/20 sm:px-3 sm:py-2 sm:text-sm"
+                >
+                  <Trash2 size={14} className="sm:h-[15px] sm:w-[15px]" />
+                  {!isCompactViewport ? 'Clear Page' : null}
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
@@ -423,11 +434,13 @@ export default function StudyPdfViewer({ src, storageKey }) {
               />
             </Document>
 
-            {renderWidth && renderHeight ? (
+            {editorEnabled && renderWidth && renderHeight ? (
               <canvas
                 ref={canvasRef}
                 className={`absolute inset-0 touch-none ${
-                  tool ? 'pointer-events-auto cursor-crosshair' : 'pointer-events-none cursor-default'
+                  editorEnabled && tool
+                    ? 'pointer-events-auto cursor-crosshair'
+                    : 'pointer-events-none cursor-default'
                 }`}
                 onPointerDown={startStroke}
                 onPointerMove={extendStroke}

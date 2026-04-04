@@ -4,6 +4,7 @@ const path = require('path');
 const YearInstance = require('../models/YearInstance');
 const Week = require('../models/Week');
 const Message = require('../models/Message');
+const User = require('../models/User');
 const { sanitizeInput } = require('../utils/validation');
 const { AppError, catchAsync } = require('../utils/errorHandler');
 const {
@@ -175,6 +176,14 @@ exports.getYearInstance = catchAsync(async (req, res, next) => {
     return next(new AppError('Year instance not found', 404));
   }
 
+  // When a user opens a year instance, add it to their
+  // personal study library so it appears on their dashboard.
+  if (req.user && instance._id) {
+    await User.findByIdAndUpdate(req.user._id, {
+      $addToSet: { libraryYearInstances: instance._id },
+    });
+  }
+
   res.status(200).json({
     success: true,
     data: instance,
@@ -273,6 +282,15 @@ exports.getWeek = catchAsync(async (req, res, next) => {
 
   if (!week) {
     return next(new AppError('Week not found', 404));
+  }
+
+  // When a user opens a specific week, also add its year instance
+  // to their personal library so "Continue" and stats are
+  // account-specific.
+  if (req.user && week.yearInstanceId?._id) {
+    await User.findByIdAndUpdate(req.user._id, {
+      $addToSet: { libraryYearInstances: week.yearInstanceId._id },
+    });
   }
 
   res.status(200).json({

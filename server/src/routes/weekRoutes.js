@@ -25,16 +25,16 @@ const router = express.Router();
 // via optionalAuth; guests still see the shared library.
 router.get('/year-instances', optionalAuth, getAllYearInstances);
 router.get('/year-instances/course/:courseId', getYearInstances);
-router.get('/year-instance/:id', getYearInstance);
+router.get('/year-instance/:id', optionalAuth, getYearInstance);
 router.post('/year-instances', protectRoute, authorize('admin'), createYearInstance);
 router.put('/year-instances/:id', protectRoute, authorize('admin'), updateYearInstance);
 
 // Week Routes
 router.get('/weeks/:yearInstanceId', getWeeks);
-router.get('/week/:id', getWeek);
+router.get('/week/:id', optionalAuth, getWeek);
 router.post('/weeks', protectRoute, authorize('admin'), createWeek);
 router.put('/weeks/:id', protectRoute, authorize('admin'), updateWeek);
-router.get('/week/:weekId/stats', getWeekStats);
+router.get('/week/:weekId/stats', optionalAuth, getWeekStats);
 
 // Material Routes
 router.get('/week/:weekId/materials', getWeekMaterials);

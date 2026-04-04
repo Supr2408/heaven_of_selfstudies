@@ -286,7 +286,7 @@ export default function WeekPage() {
       {week ? (
         <>
           {chatOpen ? (
-            <div className="fixed bottom-24 right-6 z-40 w-[min(460px,calc(100vw-1.5rem))]">
+            <div className="fixed bottom-20 right-3 z-40 w-[min(460px,calc(100vw-0.75rem))] sm:bottom-24 sm:right-6 sm:w-[min(460px,calc(100vw-1.5rem))]">
               <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl shadow-slate-900/15">
                 <div className="flex items-center justify-between border-b border-slate-200 bg-slate-950 px-5 py-4 text-white">
                   <div>
@@ -315,11 +315,11 @@ export default function WeekPage() {
 
           <button
             onClick={() => setChatOpen((state) => !state)}
-            className="fixed bottom-6 right-6 z-40 flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-xl shadow-blue-500/30 transition hover:scale-[1.03] hover:shadow-2xl"
+            className="fixed bottom-4 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-xl shadow-blue-500/30 transition hover:scale-[1.03] hover:shadow-2xl sm:bottom-6 sm:right-6 sm:h-16 sm:w-16"
             aria-label={chatOpen ? 'Hide quick chat' : 'Open quick chat'}
             title="Quick chat"
           >
-            <MessageCircle size={26} />
+            <MessageCircle size={24} />
           </button>
         </>
       ) : null}

@@ -97,7 +97,7 @@ const drawStroke = (context, stroke, width, height) => {
   context.restore();
 };
 
-export default function StudyPdfViewer({ src, storageKey, title }) {
+export default function StudyPdfViewer({ src, storageKey }) {
   const shellRef = useRef(null);
   const canvasRef = useRef(null);
   const drawingRef = useRef(false);
@@ -164,6 +164,7 @@ export default function StudyPdfViewer({ src, storageKey, title }) {
     pageSize.width && pageSize.height
       ? Math.round((pageSize.height / pageSize.width) * renderWidth)
       : 0;
+  const isCompactViewport = (viewportWidth || 0) > 0 && viewportWidth < 640;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -269,15 +270,16 @@ export default function StudyPdfViewer({ src, storageKey, title }) {
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-950 px-4 py-3 text-white">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="border-b border-slate-800 bg-slate-950 px-3 py-3 text-white sm:px-4">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
           {Object.entries(TOOL_CONFIG).map(([toolName, config]) => {
             const Icon = toolName === 'pen' ? PenLine : Highlighter;
             return (
               <button
                 key={toolName}
                 onClick={() => toggleTool(toolName)}
-                className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition ${
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium transition sm:text-sm ${
                   tool === toolName
                     ? 'border-blue-400 bg-blue-500/20 text-white'
                     : 'border-white/15 bg-white/5 text-slate-200 hover:bg-white/10'
@@ -291,7 +293,7 @@ export default function StudyPdfViewer({ src, storageKey, title }) {
 
           <button
             onClick={() => toggleTool('eraser')}
-            className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition ${
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium transition sm:text-sm ${
               tool === 'eraser'
                 ? 'border-blue-400 bg-blue-500/20 text-white'
                 : 'border-white/15 bg-white/5 text-slate-200 hover:bg-white/10'
@@ -306,7 +308,7 @@ export default function StudyPdfViewer({ src, storageKey, title }) {
               <button
                 key={value}
                 onClick={() => setColor(value)}
-                className={`h-8 w-8 rounded-full border-2 transition ${
+                className={`h-8 w-8 rounded-full border-2 transition sm:h-9 sm:w-9 ${
                   color === value ? 'border-white scale-110' : 'border-transparent'
                 }`}
                 style={{ backgroundColor: value }}
@@ -316,70 +318,76 @@ export default function StudyPdfViewer({ src, storageKey, title }) {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            disabled={currentPage <= 1}
-            onClick={() => goToPage(currentPage - 1)}
-            className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <ChevronLeft size={15} />
-            Prev
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              disabled={currentPage <= 1}
+              onClick={() => goToPage(currentPage - 1)}
+              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm"
+            >
+              <ChevronLeft size={15} />
+              <span className={isCompactViewport ? 'hidden' : 'inline'}>Prev</span>
+            </button>
 
-          <div className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-white">
-            {currentPage} / {numPages || 1}
+            <div className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-white sm:text-sm">
+              {currentPage} / {numPages || 1}
+            </div>
+
+            <button
+              disabled={currentPage >= numPages}
+              onClick={() => goToPage(currentPage + 1)}
+              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm"
+            >
+              <span className={isCompactViewport ? 'hidden' : 'inline'}>Next</span>
+              <ChevronRight size={15} />
+            </button>
+
+            <button
+              onClick={() => setZoom((current) => Math.max(0.8, Number((current - 0.1).toFixed(1))))}
+              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs text-slate-200 transition hover:bg-white/10 sm:text-sm"
+              aria-label="Zoom out"
+            >
+              <ZoomOut size={15} />
+            </button>
+
+            <div className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs text-slate-200 sm:text-sm">
+              {Math.round(zoom * 100)}%
+            </div>
+
+            <button
+              onClick={() => setZoom((current) => Math.min(2.2, Number((current + 0.1).toFixed(1))))}
+              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs text-slate-200 transition hover:bg-white/10 sm:text-sm"
+              aria-label="Zoom in"
+            >
+              <ZoomIn size={15} />
+            </button>
+
+            <button
+              onClick={undoLastStroke}
+              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs text-slate-200 transition hover:bg-white/10 sm:text-sm"
+            >
+              <RotateCcw size={15} />
+              {!isCompactViewport ? 'Undo' : null}
+            </button>
+
+            <button
+              onClick={clearCurrentPage}
+              className="inline-flex items-center gap-1 rounded-full border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-100 transition hover:bg-red-500/20 sm:text-sm"
+            >
+              <Trash2 size={15} />
+              {!isCompactViewport ? 'Clear Page' : null}
+            </button>
           </div>
-
-          <button
-            disabled={currentPage >= numPages}
-            onClick={() => goToPage(currentPage + 1)}
-            className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Next
-            <ChevronRight size={15} />
-          </button>
-
-          <button
-            onClick={() => setZoom((current) => Math.max(0.8, Number((current - 0.1).toFixed(1))))}
-            className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10"
-          >
-            <ZoomOut size={15} />
-          </button>
-
-          <div className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-sm text-slate-200">
-            {Math.round(zoom * 100)}%
-          </div>
-
-          <button
-            onClick={() => setZoom((current) => Math.min(2.2, Number((current + 0.1).toFixed(1))))}
-            className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10"
-          >
-            <ZoomIn size={15} />
-          </button>
-
-          <button
-            onClick={undoLastStroke}
-            className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10"
-          >
-            <RotateCcw size={15} />
-            Undo
-          </button>
-
-          <button
-            onClick={clearCurrentPage}
-            className="inline-flex items-center gap-1 rounded-full border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-100 transition hover:bg-red-500/20"
-          >
-            <Trash2 size={15} />
-            Clear Page
-          </button>
         </div>
       </div>
 
-      <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
-        Basic study tools for {title || 'this PDF'}: pen, highlighter, eraser, page navigation, and zoom. Click the active tool again to return to reading mode.
-      </div>
-
-      <div ref={shellRef} className="overflow-auto bg-slate-900/95 px-4 py-5" style={{ height: '82vh', minHeight: '720px' }}>
+      <div
+        ref={shellRef}
+        className="overflow-auto bg-slate-900/95 px-2 py-3 sm:px-4 sm:py-5"
+        style={{
+          height: isCompactViewport ? 'calc(100dvh - 15rem)' : '82vh',
+          minHeight: isCompactViewport ? '420px' : '720px',
+        }}
+      >
         <div className="mx-auto w-fit">
           <div
             className="relative overflow-hidden rounded-lg bg-white shadow-2xl"

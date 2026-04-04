@@ -270,22 +270,22 @@ export default function StudyPdfViewer({ src, storageKey }) {
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-800 bg-slate-950 px-3 py-3 text-white sm:px-4">
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-2">
+      <div className="border-b border-slate-800 bg-slate-950 px-2.5 py-2.5 text-white sm:px-4 sm:py-3">
+        <div className="flex flex-col gap-2.5 sm:gap-3">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           {Object.entries(TOOL_CONFIG).map(([toolName, config]) => {
             const Icon = toolName === 'pen' ? PenLine : Highlighter;
             return (
               <button
                 key={toolName}
                 onClick={() => toggleTool(toolName)}
-                className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium transition sm:text-sm ${
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-medium transition sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
                   tool === toolName
                     ? 'border-blue-400 bg-blue-500/20 text-white'
                     : 'border-white/15 bg-white/5 text-slate-200 hover:bg-white/10'
                 }`}
               >
-                <Icon size={15} />
+                <Icon size={14} className="sm:h-[15px] sm:w-[15px]" />
                 {config.label}
               </button>
             );
@@ -293,22 +293,22 @@ export default function StudyPdfViewer({ src, storageKey }) {
 
           <button
             onClick={() => toggleTool('eraser')}
-            className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium transition sm:text-sm ${
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-medium transition sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
               tool === 'eraser'
                 ? 'border-blue-400 bg-blue-500/20 text-white'
                 : 'border-white/15 bg-white/5 text-slate-200 hover:bg-white/10'
             }`}
           >
-            <Eraser size={15} />
+            <Eraser size={14} className="sm:h-[15px] sm:w-[15px]" />
             Eraser
           </button>
 
-          <div className="ml-1 flex items-center gap-2">
+          <div className="ml-0.5 flex items-center gap-1.5 sm:ml-1 sm:gap-2">
             {COLOR_OPTIONS.map((value) => (
               <button
                 key={value}
                 onClick={() => setColor(value)}
-                className={`h-8 w-8 rounded-full border-2 transition sm:h-9 sm:w-9 ${
+                className={`h-7 w-7 rounded-full border-2 transition sm:h-9 sm:w-9 ${
                   color === value ? 'border-white scale-110' : 'border-transparent'
                 }`}
                 style={{ backgroundColor: value }}
@@ -318,62 +318,62 @@ export default function StudyPdfViewer({ src, storageKey }) {
           </div>
         </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <button
               disabled={currentPage <= 1}
               onClick={() => goToPage(currentPage - 1)}
-              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm"
+              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3 sm:py-2 sm:text-sm"
             >
-              <ChevronLeft size={15} />
+              <ChevronLeft size={14} className="sm:h-[15px] sm:w-[15px]" />
               <span className={isCompactViewport ? 'hidden' : 'inline'}>Prev</span>
             </button>
 
-            <div className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-white sm:text-sm">
+            <div className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] font-semibold text-white sm:px-3 sm:py-2 sm:text-sm">
               {currentPage} / {numPages || 1}
             </div>
 
             <button
               disabled={currentPage >= numPages}
               onClick={() => goToPage(currentPage + 1)}
-              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm"
+              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3 sm:py-2 sm:text-sm"
             >
               <span className={isCompactViewport ? 'hidden' : 'inline'}>Next</span>
-              <ChevronRight size={15} />
+              <ChevronRight size={14} className="sm:h-[15px] sm:w-[15px]" />
             </button>
 
             <button
               onClick={() => setZoom((current) => Math.max(0.8, Number((current - 0.1).toFixed(1))))}
-              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs text-slate-200 transition hover:bg-white/10 sm:text-sm"
+              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 transition hover:bg-white/10 sm:px-3 sm:py-2 sm:text-sm"
               aria-label="Zoom out"
             >
-              <ZoomOut size={15} />
+              <ZoomOut size={14} className="sm:h-[15px] sm:w-[15px]" />
             </button>
 
-            <div className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs text-slate-200 sm:text-sm">
+            <div className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 sm:px-3 sm:py-2 sm:text-sm">
               {Math.round(zoom * 100)}%
             </div>
 
             <button
               onClick={() => setZoom((current) => Math.min(2.2, Number((current + 0.1).toFixed(1))))}
-              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs text-slate-200 transition hover:bg-white/10 sm:text-sm"
+              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 transition hover:bg-white/10 sm:px-3 sm:py-2 sm:text-sm"
               aria-label="Zoom in"
             >
-              <ZoomIn size={15} />
+              <ZoomIn size={14} className="sm:h-[15px] sm:w-[15px]" />
             </button>
 
             <button
               onClick={undoLastStroke}
-              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs text-slate-200 transition hover:bg-white/10 sm:text-sm"
+              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 transition hover:bg-white/10 sm:px-3 sm:py-2 sm:text-sm"
             >
-              <RotateCcw size={15} />
+              <RotateCcw size={14} className="sm:h-[15px] sm:w-[15px]" />
               {!isCompactViewport ? 'Undo' : null}
             </button>
 
             <button
               onClick={clearCurrentPage}
-              className="inline-flex items-center gap-1 rounded-full border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-100 transition hover:bg-red-500/20 sm:text-sm"
+              className="inline-flex items-center gap-1 rounded-full border border-red-400/40 bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-100 transition hover:bg-red-500/20 sm:px-3 sm:py-2 sm:text-sm"
             >
-              <Trash2 size={15} />
+              <Trash2 size={14} className="sm:h-[15px] sm:w-[15px]" />
               {!isCompactViewport ? 'Clear Page' : null}
             </button>
           </div>

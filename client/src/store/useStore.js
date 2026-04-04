@@ -55,6 +55,7 @@ const useStore = create((set) => ({
 
   // UI actions
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+  setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
   setTheme: (theme) => set({ currentTheme: theme }),
 
   // Navigation actions

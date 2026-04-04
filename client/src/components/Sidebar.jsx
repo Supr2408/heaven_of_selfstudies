@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, Home, BookOpen, MessageSquare } from 'lucide-react';
+import { ChevronDown, ChevronRight, Home, BookOpen, MessageSquare, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { courseAPI, yearInstanceAPI } from '@/lib/api';
@@ -41,6 +41,7 @@ export default function Sidebar() {
     sidebarOpen,
     selectedWeek,
     contentVersion,
+    setSidebarOpen,
     setSelectedSubject,
     setSelectedCourse,
     setSelectedYear,
@@ -49,6 +50,7 @@ export default function Sidebar() {
     sidebarOpen: state.sidebarOpen,
     selectedWeek: state.selectedWeek,
     contentVersion: state.contentVersion,
+    setSidebarOpen: state.setSidebarOpen,
     setSelectedSubject: state.setSelectedSubject,
     setSelectedCourse: state.setSelectedCourse,
     setSelectedYear: state.setSelectedYear,
@@ -63,8 +65,13 @@ export default function Sidebar() {
   const [expandedYearInstance, setExpandedYearInstance] = useState(null);
   const [expandedMonths, setExpandedMonths] = useState({});
   const [loading, setLoading] = useState(false);
-  const [initialized, setInitialized] = useState(false);
   const [error, setError] = useState(null);
+
+  const closeSidebarOnMobile = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setSidebarOpen(false);
+    }
+  };
 
   // Fetch subjects on mount
   useEffect(() => {
@@ -209,32 +216,52 @@ export default function Sidebar() {
     setSelectedCourse(course);
     setSelectedYear(instance);
     setSelectedWeek(week);
+    closeSidebarOnMobile();
     router.push(`/dashboard/week?weekId=${week._id}`);
   };
 
   // ------------------------------------------------------------------------
   return (
     <aside
-      className={`fixed left-0 top-0 h-screen ${
-        sidebarOpen ? 'w-64' : 'w-20'
-      } bg-slate-900 text-white transition-all duration-300 overflow-y-auto z-40`}
+      className={`fixed left-0 top-0 z-40 h-screen overflow-y-auto bg-slate-900 text-white transition-all duration-300 md:translate-x-0 ${
+        sidebarOpen
+          ? 'w-[min(85vw,20rem)] translate-x-0 md:w-64'
+          : 'w-[min(85vw,20rem)] -translate-x-full md:w-20'
+      }`}
     >
       {/* Header */}
-      <div className="p-4 border-b border-slate-700">
+      <div className="border-b border-slate-700 p-4">
         {sidebarOpen && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-sm font-bold">
+                NH
+              </div>
+              <span className="font-bold text-lg">NPTEL Hub</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(false)}
+              className="rounded-lg p-2 text-slate-300 transition hover:bg-slate-800 md:hidden"
+              aria-label="Close sidebar"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        )}
+        {!sidebarOpen && (
+          <div className="hidden items-center gap-2 md:flex">
             <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-sm font-bold">
               NH
             </div>
-            <span className="font-bold text-lg">NPTEL Hub</span>
           </div>
         )}
       </div>
 
       {/* Navigation Items */}
       <nav className="p-4 space-y-2">
-        <Link href="/dashboard">
-          <div className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer">
+        <Link href="/dashboard" onClick={closeSidebarOnMobile}>
+          <div className="flex items-center justify-between rounded-lg px-3 py-2 transition-colors cursor-pointer hover:bg-slate-800">
             {sidebarOpen && (
               <div className="flex items-center gap-2 flex-1">
                 <Home size={18} />
@@ -245,8 +272,8 @@ export default function Sidebar() {
           </div>
         </Link>
 
-        <Link href="/courses">
-          <div className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer">
+        <Link href="/courses" onClick={closeSidebarOnMobile}>
+          <div className="flex items-center justify-between rounded-lg px-3 py-2 transition-colors cursor-pointer hover:bg-slate-800">
             {sidebarOpen && (
               <div className="flex items-center gap-2 flex-1">
                 <BookOpen size={18} />
@@ -257,8 +284,8 @@ export default function Sidebar() {
           </div>
         </Link>
 
-        <Link href="/assignments">
-          <div className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer">
+        <Link href="/assignments" onClick={closeSidebarOnMobile}>
+          <div className="flex items-center justify-between rounded-lg px-3 py-2 transition-colors cursor-pointer hover:bg-slate-800">
             {sidebarOpen && (
               <div className="flex items-center gap-2 flex-1">
                 <MessageSquare size={18} />

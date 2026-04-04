@@ -34,6 +34,7 @@ export default function MainLayout({ children }) {
   const [savingAlias, setSavingAlias] = useState(false);
   const [aliasMessage, setAliasMessage] = useState('');
   const store = useStore();
+  const setSidebarOpen = useStore((state) => state.setSidebarOpen);
   const globalActiveUsers = useStore((state) => state.globalActiveUsers);
   const setGlobalActiveUsers = useStore((state) => state.setGlobalActiveUsers);
   const publicName = getPublicUserName(store.user);
@@ -72,6 +73,27 @@ export default function MainLayout({ children }) {
   useEffect(() => {
     setDisplayName(store.user?.displayName || '');
   }, [store.user?.displayName]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia('(min-width: 768px)');
+    const syncSidebar = (event) => {
+      setSidebarOpen(event.matches);
+    };
+
+    setSidebarOpen(mediaQuery.matches);
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', syncSidebar);
+      return () => mediaQuery.removeEventListener('change', syncSidebar);
+    }
+
+    mediaQuery.addListener(syncSidebar);
+    return () => mediaQuery.removeListener(syncSidebar);
+  }, [setSidebarOpen]);
 
   useEffect(() => {
     if (!store.authReady || !store.isAuthenticated || !store.user?._id) {
@@ -189,14 +211,22 @@ export default function MainLayout({ children }) {
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
       <Sidebar />
+      {store.sidebarOpen ? (
+        <button
+          type="button"
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-slate-950/35 md:hidden"
+          aria-label="Close navigation overlay"
+        />
+      ) : null}
 
       <div
         className={`flex min-w-0 flex-1 flex-col transition-all duration-300 ${
-          store.sidebarOpen ? 'ml-64' : 'ml-20'
+          store.sidebarOpen ? 'ml-0 md:ml-64' : 'ml-0 md:ml-20'
         }`}
       >
         <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
-          <div className="relative flex items-center justify-between px-6 py-4">
+          <div className="relative flex items-center justify-between gap-3 px-4 py-4 sm:px-6">
             <button
               onClick={() => store.toggleSidebar()}
               className="rounded-lg p-2 transition-colors hover:bg-slate-100"
@@ -218,7 +248,7 @@ export default function MainLayout({ children }) {
               </div>
             ) : null}
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
               {store.isAuthenticated ? (
                 <div className="relative" ref={dropdownRef}>
                   <button
@@ -251,7 +281,7 @@ export default function MainLayout({ children }) {
 
                     <ChevronDown
                       size={16}
-                      className={`text-slate-500 transition-transform ${
+                      className={`hidden text-slate-500 transition-transform sm:block ${
                         menuOpen ? 'rotate-180' : ''
                       }`}
                     />
@@ -259,7 +289,7 @@ export default function MainLayout({ children }) {
 
                   {menuOpen && (
                     <div
-                      className="absolute right-0 mt-3 w-72 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_50px_-30px_rgba(15,23,42,0.45)]"
+                      className="absolute right-0 mt-3 w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_50px_-30px_rgba(15,23,42,0.45)] sm:w-72"
                       role="menu"
                     >
                       <div className="border-b border-slate-100 px-4 py-4">
@@ -392,7 +422,7 @@ export default function MainLayout({ children }) {
               ) : (
                 <Link
                   href="/login"
-                  className="rounded-full bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+                  className="rounded-full bg-blue-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-700 sm:px-4"
                 >
                   Continue with Google
                 </Link>
@@ -402,7 +432,7 @@ export default function MainLayout({ children }) {
         </header>
 
         <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto flex min-h-full max-w-7xl flex-col px-6 py-6">
+          <div className="mx-auto flex min-h-full max-w-7xl flex-col px-4 py-4 sm:px-6 sm:py-6">
             <div className="flex-1">{children}</div>
 
             <footer className="mt-12 overflow-hidden rounded-[2rem] border border-slate-200 bg-white">

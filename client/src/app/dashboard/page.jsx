@@ -93,11 +93,13 @@ export default function Dashboard() {
               Student Dashboard
             </p>
             <h1 className="mt-4 max-w-2xl text-4xl font-bold leading-tight">
-              Pick up your NPTEL study journey without hunting through menus.
+              Stay on track with your NPTEL community journey 
+              without hunting through menus.
             </h1>
             <p className="mt-4 max-w-xl text-sm leading-7 text-blue-50 md:text-base">
-              Open the latest run, jump straight into week-wise materials, and keep your course
-              library ready for revision, practice, and assignment support.
+              Open the latest run, jump straight into week-wise materials, and keep your library
+              ready for revision, practice, and exam-focused assignment support — built with
+              learners in the NPTEL community, for learners.
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
@@ -115,7 +117,7 @@ export default function Dashboard() {
                 className="inline-flex items-center gap-2 rounded-2xl border border-white/35 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
               >
                 <Search size={16} />
-                Browse NPTEL search
+                Browse community courses
               </Link>
             </div>
           </div>

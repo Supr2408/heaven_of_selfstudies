@@ -39,6 +39,41 @@ const sortInstancesDesc = (instances = []) =>
     return (SEMESTER_ORDER[b.semester] || 0) - (SEMESTER_ORDER[a.semester] || 0);
   });
 
+const getLibraryInstanceIdSet = (user) =>
+  new Set((user?.libraryYearInstances || []).map((id) => String(id)));
+
+const buildHubCourseState = async (course, user) => {
+  if (!course) {
+    return null;
+  }
+
+  const instances = sortInstancesDesc(await YearInstance.find({ courseId: course._id }));
+  const latestInstance = instances[0] || null;
+  const latestFirstWeek = latestInstance
+    ? await Week.findOne({ yearInstanceId: latestInstance._id }).sort({ weekNumber: 1 })
+    : null;
+
+  const libraryInstanceIds = getLibraryInstanceIdSet(user);
+  const userInstances = instances.filter((instance) => libraryInstanceIds.has(String(instance._id)));
+  const preferredInstance = userInstances[0] || latestInstance;
+  const preferredFirstWeek = preferredInstance
+    ? await Week.findOne({ yearInstanceId: preferredInstance._id }).sort({ weekNumber: 1 })
+    : null;
+
+  return {
+    courseId: course._id,
+    title: course.title,
+    code: course.code,
+    subject: course.subjectId || null,
+    importedRuns: instances.length,
+    userHasCourse: userInstances.length > 0,
+    latestYearInstanceId: preferredInstance?._id || null,
+    firstWeekId: preferredFirstWeek?._id || null,
+    globalLatestYearInstanceId: latestInstance?._id || null,
+    globalFirstWeekId: latestFirstWeek?._id || null,
+  };
+};
+
 const removeStaleImportedWeeks = async (yearInstanceId, incomingWeekNumbers = []) => {
   const staleWeeks = await Week.find({
     yearInstanceId,
@@ -350,26 +385,7 @@ exports.getNptelCoursePreview = catchAsync(async (req, res) => {
     nptelLink: preview.courseUrl,
   });
 
-  let hubCourse = null;
-  if (importedCourse) {
-    const instances = sortInstancesDesc(
-      await YearInstance.find({ courseId: importedCourse._id })
-    );
-    const latestInstance = instances[0] || null;
-    const firstWeek = latestInstance
-      ? await Week.findOne({ yearInstanceId: latestInstance._id }).sort({ weekNumber: 1 })
-      : null;
-
-    hubCourse = {
-      courseId: importedCourse._id,
-      title: importedCourse.title,
-      code: importedCourse.code,
-      subject: importedCourse.subjectId || null,
-      importedRuns: instances.length,
-      latestYearInstanceId: latestInstance?._id || null,
-      firstWeekId: firstWeek?._id || null,
-    };
-  }
+  const hubCourse = await buildHubCourseState(importedCourse, req.user);
 
   res.status(200).json({
     success: true,

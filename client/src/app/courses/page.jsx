@@ -329,16 +329,20 @@ export default function CoursesPage() {
                 {preview.hubCourse ? (
                   <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
                     <div className="text-sm font-semibold text-emerald-800">
-                      Already available in the Hub
+                      {preview.hubCourse.userHasCourse
+                        ? 'Continue with your copy'
+                        : 'Already available in the Hub'}
                     </div>
                     <p className="mt-1 text-sm text-emerald-700">
-                      {preview.hubCourse.importedRuns} batch(es) already imported for this course.
+                      {preview.hubCourse.userHasCourse
+                        ? `This course is already in your library. ${preview.hubCourse.importedRuns} batch(es) are ready for you.`
+                        : `${preview.hubCourse.importedRuns} batch(es) are already imported for this course. Open it once and it will be added to your library.`}
                     </p>
                     <button
                       onClick={() => openImportedCourse(preview.hubCourse)}
                       className="mt-3 inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800"
                     >
-                      Open in Hub
+                      {preview.hubCourse.userHasCourse ? 'Continue with this course' : 'Open in Hub'}
                       <ArrowRight size={16} />
                     </button>
                   </div>

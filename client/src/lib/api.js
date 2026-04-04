@@ -178,9 +178,9 @@ export const courseAPI = {
     if (courseName) params.set('courseName', courseName);
     if (institute) params.set('institute', institute);
     if (professor) params.set('professor', professor);
-    return apiClient(`/courses/discover/course/${catalogId}?${params.toString()}`);
+    return apiRequest(`/courses/discover/course/${catalogId}?${params.toString()}`);
   },
-  importNptelCourse: (payload) => apiClient('/courses/import-nptel', {
+  importNptelCourse: (payload) => apiRequest('/courses/import-nptel', {
     method: 'POST',
     body: payload,
   }),
@@ -188,12 +188,12 @@ export const courseAPI = {
 
 // Year Instance API
 export const yearInstanceAPI = {
-  getAllYearInstances: () => apiClient('/weeks/year-instances'),
-  getYearInstances: (courseId) => apiClient(`/weeks/year-instances/course/${courseId}`),
-  getYearInstance: (id) => apiClient(`/weeks/year-instance/${id}`),
+  getAllYearInstances: () => apiRequest('/weeks/year-instances'),
+  getYearInstances: (courseId) => apiRequest(`/weeks/year-instances/course/${courseId}`),
+  getYearInstance: (id) => apiRequest(`/weeks/year-instance/${id}`),
   getWeeks: (yearInstanceId) => apiClient(`/weeks/weeks/${yearInstanceId}`),
-  getWeek: (id) => apiClient(`/weeks/week/${id}`),
-  getWeekStats: (weekId) => apiClient(`/weeks/week/${weekId}/stats`),
+  getWeek: (id) => apiRequest(`/weeks/week/${id}`),
+  getWeekStats: (weekId) => apiRequest(`/weeks/week/${weekId}/stats`),
 };
 
 // Resource API

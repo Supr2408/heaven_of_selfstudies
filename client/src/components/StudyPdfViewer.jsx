@@ -329,7 +329,7 @@ export default function StudyPdfViewer({ src, storageKey }) {
             </div>
           ) : null}
 
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-1.5 sm:justify-start sm:gap-2">
             <button
               disabled={currentPage <= 1}
               onClick={() => goToPage(currentPage - 1)}

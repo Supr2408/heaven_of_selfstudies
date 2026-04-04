@@ -122,36 +122,8 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="space-y-4 bg-slate-50 px-6 py-8">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
-                At A Glance
-              </p>
-            </div>
-
-            <div className="grid gap-3">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-sm text-slate-500">Courses in library</p>
-                <p className="mt-2 text-4xl font-bold text-slate-900">{courseCount}</p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-sm text-slate-500">Study runs ready</p>
-                <p className="mt-2 text-4xl font-bold text-slate-900">{orderedInstances.length}</p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-sm text-slate-500">Weeks available</p>
-                <p className="mt-2 text-4xl font-bold text-slate-900">{totalWeeks}</p>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
-              <p className="font-semibold text-slate-900">Study flow that makes sense</p>
-              <ol className="mt-3 list-decimal space-y-2 pl-4">
-                <li>Search or add a course.</li>
-                <li>Open a batch and choose a week.</li>
-                <li>Revise with solutions, discussion, and notes.</li>
-              </ol>
-            </div>
+          <div className="bg-slate-50 px-6 py-8">
+            <DashboardMissionPanel />
           </div>
         </div>
       </section>
@@ -202,7 +174,51 @@ export default function Dashboard() {
           )}
         </div>
 
-        <DashboardMissionPanel />
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
+                Library Overview
+              </p>
+              <h2 className="mt-1 text-2xl font-bold text-slate-900">Your study library, at a glance</h2>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Courses in library
+              </p>
+              <p className="mt-3 text-3xl font-bold text-slate-900">{courseCount}</p>
+              <p className="mt-1 text-xs text-slate-500">Each course keeps its runs, weeks, and materials in one place.</p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Study runs ready
+              </p>
+              <p className="mt-3 text-3xl font-bold text-slate-900">{orderedInstances.length}</p>
+              <p className="mt-1 text-xs text-slate-500">Different batches you can open for week-wise revision.</p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Weeks available
+              </p>
+              <p className="mt-3 text-3xl font-bold text-slate-900">{totalWeeks}</p>
+              <p className="mt-1 text-xs text-slate-500">Every available week can link to assignments, notes, and discussions.</p>
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+            <p className="font-semibold text-slate-900">How to use this space</p>
+            <ol className="mt-3 list-decimal space-y-2 pl-4">
+              <li>Pick a course from the left or add a new one from community search.</li>
+              <li>Open a batch and choose a week that matches your current pace.</li>
+              <li>Revise with solutions, discussions, and important questions for exams.</li>
+            </ol>
+          </div>
+        </div>
       </section>
     </div>
   );

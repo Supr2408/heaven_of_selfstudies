@@ -88,6 +88,10 @@ export default function Dashboard() {
     <div className="mx-auto max-w-6xl space-y-8">
       <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="grid gap-0 lg:grid-cols-[1.45fr_0.85fr]">
+          <div className="bg-slate-50 px-6 py-8">
+            <DashboardMissionPanel />
+          </div>
+
           <div className="bg-gradient-to-br from-slate-900 via-blue-700 to-cyan-500 px-8 py-10 text-white">
             <p className="text-xs font-semibold uppercase tracking-[0.32em] text-blue-100">
               Student Dashboard

@@ -429,6 +429,21 @@ export default function MainLayout({ children }) {
               )}
             </div>
           </div>
+
+          {store.isAuthenticated ? (
+            <div className="border-t border-slate-100 px-4 pb-3 md:hidden">
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                </span>
+                <Radio size={12} className="text-slate-400" />
+                <span className="font-medium text-slate-700">
+                  Active users: {Math.max(globalActiveUsers || 0, 1)}
+                </span>
+              </div>
+            </div>
+          ) : null}
         </header>
 
         <main className="flex-1 overflow-y-auto">

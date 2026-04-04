@@ -125,10 +125,6 @@ export default function Dashboard() {
               </Link>
             </div>
           </div>
-
-          <div className="bg-slate-50 px-6 py-8">
-            <DashboardMissionPanel />
-          </div>
         </div>
       </section>
 

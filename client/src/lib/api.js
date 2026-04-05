@@ -19,11 +19,11 @@ const isNetworkError = (error) =>
 
 const getUnexpectedResponseMessage = (response, rawText = '') => {
   if (response.status === 413) {
-    return 'PDF file is too large. Please upload a file smaller than 20 MB.';
+    return 'Uploaded file is too large. Please choose a smaller file.';
   }
 
   if (response.status === 415) {
-    return 'Only PDF files are supported for this upload.';
+    return 'This file type is not supported for this upload.';
   }
 
   if (response.status >= 500) {
@@ -240,6 +240,8 @@ export const resourceAPI = {
   getResource: (id) => apiRequest(`/resources/resource/${id}`),
   getTrendingResources: (weekId) => apiRequest(`/resources/trending/${weekId}`),
   createResource: (data) => apiRequest('/resources/resources', { method: 'POST', body: data }),
+  uploadResourceFile: (formData) =>
+    apiFormRequest('/resources/resources/upload', formData, { method: 'POST' }),
   uploadResourcePdf: (formData) =>
     apiFormRequest('/resources/resources/upload', formData, { method: 'POST' }),
   getReviewQueue: (params = {}) => {

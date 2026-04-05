@@ -260,14 +260,17 @@ exports.updateYearInstance = catchAsync(async (req, res, next) => {
  */
 exports.getWeeks = catchAsync(async (req, res) => {
   const { yearInstanceId } = req.params;
+  const yearInstance = await YearInstance.findById(yearInstanceId).select('totalWeeks');
+  const maxVisibleWeek = Math.min(Number(yearInstance?.totalWeeks) || 12, 12);
 
   const weeks = await Week.find({ yearInstanceId })
     .sort({ weekNumber: 1 });
+  const visibleWeeks = weeks.filter((week) => (week?.weekNumber || 0) <= maxVisibleWeek);
 
   res.status(200).json({
     success: true,
-    count: weeks.length,
-    data: weeks,
+    count: visibleWeeks.length,
+    data: visibleWeeks,
   });
 });
 

@@ -32,6 +32,7 @@ const SEMESTER_ORDER = {
   'July-Oct': 2,
 };
 const MAX_IMPORTED_WEEK = 12;
+const clampImportedWeekCount = (value) => Math.min(Math.max(Number(value) || 0, 1), MAX_IMPORTED_WEEK);
 
 const sortInstancesDesc = (instances = []) =>
   [...instances].sort((a, b) => {
@@ -566,7 +567,7 @@ exports.importNptelCourse = catchAsync(async (req, res, next) => {
   const importedYearInstanceIds = [];
   for (const run of runsData) {
     const { year, semester, status, syllabus, weeks } = run;
-    const totalWeeks = run.totalWeeks || (weeks || []).length || 12;
+    const totalWeeks = clampImportedWeekCount(run.totalWeeks || (weeks || []).length || 12);
 
     let yearInstance = await YearInstance.findOne({
       courseId: course._id,

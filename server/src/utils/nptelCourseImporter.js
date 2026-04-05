@@ -408,12 +408,19 @@ const buildWeeksFromSolutions = (groupedSolutions, expectedWeekCount = 12) => {
     (weekNumber) => weekNumber > 0 && groupedSolutions.get(weekNumber).length > 0
   );
   const highestWeek = weekNumbers.length ? Math.max(...weekNumbers) : 0;
-  const totalWeeks = Math.max(expectedWeekCount || 0, highestWeek || 0, 1);
+  const normalizedExpectedWeekCount = Math.min(
+    Math.max(Number(expectedWeekCount) || highestWeek || 12, 1),
+    12
+  );
+  const totalWeeks = normalizedExpectedWeekCount;
 
   const weeks = buildPlaceholderWeeks(totalWeeks);
   const weeksByNumber = new Map(weeks.map((week) => [week.weekNumber, week]));
 
-  weekNumbers.sort((a, b) => a - b).forEach((weekNumber) => {
+  weekNumbers
+    .filter((weekNumber) => weekNumber <= totalWeeks)
+    .sort((a, b) => a - b)
+    .forEach((weekNumber) => {
     const rawItems = groupedSolutions.get(weekNumber) || [];
     const seenUrls = new Set();
     const items = rawItems.filter((item) => {
@@ -437,7 +444,7 @@ const buildWeeksFromSolutions = (groupedSolutions, expectedWeekCount = 12) => {
         fileType: 'pdf',
         uploadedAt: new Date(),
       }));
-  });
+    });
 
   return weeks;
 };

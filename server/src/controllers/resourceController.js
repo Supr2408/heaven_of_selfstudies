@@ -1,4 +1,5 @@
 const fs = require('fs');
+const path = require('path');
 const Resource = require('../models/Resource');
 const Week = require('../models/Week');
 const Course = require('../models/Course');
@@ -32,6 +33,39 @@ const normalizeResourceType = (type, fallback = 'discussion') =>
 
 const sanitizeText = (value = '', maxLength = 200) =>
   String(value || '').trim().slice(0, maxLength);
+
+const getInlineFileContentType = (resource, filePath = '') => {
+  const normalizedFileType = String(resource?.fileType || '').toLowerCase();
+  const extension = path.extname(filePath || '').toLowerCase();
+
+  if (normalizedFileType === 'image') {
+    if (extension === '.png') return 'image/png';
+    if (extension === '.jpg' || extension === '.jpeg') return 'image/jpeg';
+    return 'image/*';
+  }
+
+  if (normalizedFileType === 'pdf' || extension === '.pdf') {
+    return 'application/pdf';
+  }
+
+  if (extension === '.zip') {
+    return 'application/zip';
+  }
+
+  return 'application/octet-stream';
+};
+
+const getDownloadDisposition = (resource, filePath = '') => {
+  const extension = path.extname(filePath || '').toLowerCase();
+  const baseName = sanitizeText(resource?.title || 'submission', 120) || 'submission';
+  const fileName = `${baseName}${extension || ''}`;
+  const isInline = resource?.fileType === 'pdf' || resource?.fileType === 'image';
+
+  return {
+    fileName,
+    mode: isInline ? 'inline' : 'attachment',
+  };
+};
 
 const isLegacyPendingReview = (resource) =>
   !resource?.reviewStatus && Array.isArray(resource?.tags) && resource.tags.includes('pending-review');
@@ -228,8 +262,11 @@ const streamReviewSubmissionFile = async (resource, res, next) => {
     );
   }
 
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename="${resource.title || 'submission'}.pdf"`);
+  const contentType = getInlineFileContentType(resource, filePath);
+  const { fileName, mode } = getDownloadDisposition(resource, filePath);
+
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Disposition', `${mode}; filename="${fileName}"`);
   return res.sendFile(filePath);
 };
 
@@ -379,7 +416,7 @@ exports.createResource = catchAsync(async (req, res, next) => {
 });
 
 /**
- * Create uploaded PDF resource for admin review
+ * Create uploaded file resource for admin review
  */
 exports.createUploadedResource = catchAsync(async (req, res, next) => {
   const { weekId, courseId, title, description, type = 'solution' } = req.body;
@@ -394,7 +431,7 @@ exports.createUploadedResource = catchAsync(async (req, res, next) => {
       await fs.promises.unlink(uploadedFilePath);
     } catch (cleanupError) {
       if (cleanupError?.code !== 'ENOENT') {
-        console.error('Failed to remove orphaned uploaded PDF:', cleanupError.message);
+        console.error('Failed to remove orphaned uploaded file:', cleanupError.message);
       }
     }
   };
@@ -410,12 +447,13 @@ exports.createUploadedResource = catchAsync(async (req, res, next) => {
   }
 
   if (!req.file) {
-    return next(new AppError('Please upload a PDF file', 400));
+    return next(new AppError('Please upload a file', 400));
   }
 
   const isCourseUpload = Boolean(courseId && !weekId);
   const normalizedType = UPLOAD_TYPES.includes(type) ? type : 'solution';
   const relativeUrl = `/uploads/community/${req.file.filename}`;
+  const detectedFileType = req.file.detectedFileType || 'other';
   const resolvedBranchType = isCourseUpload
     ? BRANCH_TYPES.COURSE_DISCUSSION
     : BRANCH_TYPES.WEEK_MATERIAL;
@@ -442,7 +480,7 @@ exports.createUploadedResource = catchAsync(async (req, res, next) => {
       branchType: resolvedBranchType,
       reviewStatus: REVIEW_STATUS.PENDING,
       url: relativeUrl,
-      fileType: 'pdf',
+      fileType: detectedFileType,
       fileSize: req.file.size,
       isVerified: false,
       tags,
@@ -452,7 +490,7 @@ exports.createUploadedResource = catchAsync(async (req, res, next) => {
 
     res.status(201).json({
       success: true,
-      message: 'PDF submitted for admin review',
+      message: 'File submitted for admin review',
       data: resource,
     });
   } catch (error) {

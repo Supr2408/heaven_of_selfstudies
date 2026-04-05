@@ -17,7 +17,11 @@ import {
   UploadCloud,
 } from 'lucide-react';
 import { resourceAPI, resolveApiAssetUrl } from '@/lib/api';
-import { MAX_COMMUNITY_PDF_LABEL, validateCommunityPdfFile } from '@/lib/pdfUploads';
+import {
+  COURSE_DISCUSSION_UPLOAD_ACCEPT,
+  MAX_COURSE_DISCUSSION_UPLOAD_LABEL,
+  validateCourseDiscussionUploadFile,
+} from '@/lib/pdfUploads';
 import { getPublicUserName, isGoogleUser, isGuestLikeUser } from '@/lib/user';
 import useStore from '@/store/useStore';
 
@@ -110,7 +114,7 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
   });
   const [uploadState, setUploadState] = useState({
     type: 'resource',
-    title: `${courseTitle || 'Course'} discussion PDF`,
+    title: `${courseTitle || 'Course'} discussion file`,
     description: '',
     file: null,
   });
@@ -153,7 +157,7 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
   useEffect(() => {
     setUploadState((state) => ({
       ...state,
-      title: state.title?.trim() ? state.title : `${courseTitle || 'Course'} discussion PDF`,
+      title: state.title?.trim() ? state.title : `${courseTitle || 'Course'} discussion file`,
     }));
   }, [courseTitle]);
 
@@ -244,7 +248,7 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
       return;
     }
 
-    const fileValidationError = validateCommunityPdfFile(uploadState.file);
+    const fileValidationError = validateCourseDiscussionUploadFile(uploadState.file);
     if (fileValidationError) {
       alert(fileValidationError);
       return;
@@ -260,10 +264,10 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
     try {
       setUploading(true);
       setFeedback('');
-      await resourceAPI.uploadResourcePdf(formData);
+      await resourceAPI.uploadResourceFile(formData);
       setUploadState({
         type: uploadState.type,
-        title: `${courseTitle || 'Course'} discussion PDF`,
+        title: `${courseTitle || 'Course'} discussion file`,
         description: '',
         file: null,
       });
@@ -392,7 +396,7 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
               Contribute Here
             </p>
-            <h2 className="mt-1 text-2xl font-bold text-slate-900">Share posts and upload PDFs</h2>
+            <h2 className="mt-1 text-2xl font-bold text-slate-900">Share posts and upload files</h2>
           </div>
 
           <button
@@ -501,8 +505,7 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
             <div>
               <p className="text-base font-semibold text-slate-900">Upload extra material</p>
               <p className="mt-1 text-sm text-slate-500">
-                Upload a PDF to this discussion branch. The file stays hidden until an admin reviews
-                and approves it.
+                Upload a PDF, ZIP, PNG, or JPG file to this discussion branch. The file stays hidden until an admin reviews and approves it.
               </p>
             </div>
           </div>
@@ -531,7 +534,7 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
                   onChange={(event) =>
                     setUploadState((state) => ({ ...state, title: event.target.value }))
                   }
-                  placeholder="Cloud Computing extra notes PDF"
+                  placeholder="Cloud Computing extra notes ZIP"
                   className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
@@ -552,14 +555,14 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium text-slate-700">PDF file</label>
+                <label className="mb-2 block text-sm font-medium text-slate-700">File</label>
                 <input
                   type="file"
-                  accept="application/pdf,.pdf"
+                  accept={COURSE_DISCUSSION_UPLOAD_ACCEPT}
                   onChange={(event) =>
                     {
                       const nextFile = event.target.files?.[0] || null;
-                      const fileError = nextFile ? validateCommunityPdfFile(nextFile) : '';
+                      const fileError = nextFile ? validateCourseDiscussionUploadFile(nextFile) : '';
                       if (fileError) {
                         alert(fileError);
                       }
@@ -574,7 +577,9 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
                 {uploadState.file ? (
                   <p className="mt-2 text-xs text-slate-500">{uploadState.file.name}</p>
                 ) : null}
-                <p className="mt-2 text-xs text-slate-500">PDF only. Maximum size: {MAX_COMMUNITY_PDF_LABEL}.</p>
+                <p className="mt-2 text-xs text-slate-500">
+                  PDF, ZIP, PNG, JPG, or JPEG. Maximum size: {MAX_COURSE_DISCUSSION_UPLOAD_LABEL}.
+                </p>
               </div>
             </div>
           </div>
@@ -588,7 +593,7 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
               {uploading ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
               Upload for admin review
             </button>
-            <span className="text-xs text-slate-500">PDF only. Approved files will appear in this branch.</span>
+            <span className="text-xs text-slate-500">Approved files will appear in this branch.</span>
           </div>
         </div>
       </section>
@@ -701,7 +706,7 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
                           >
                             <LinkIcon size={15} />
                             <span className="truncate">
-                              {resource.url.startsWith('/uploads/') ? 'Open approved uploaded PDF' : resource.url}
+                              {resource.url.startsWith('/uploads/') ? 'Open approved uploaded file' : resource.url}
                             </span>
                           </a>
                         ) : null}

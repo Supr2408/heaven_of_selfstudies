@@ -32,6 +32,12 @@ export default function WeekDetail({ week, yearInstance, navigationSlot = null }
       : null;
 
   const batchLabel = getBatchLabel(yearInstance || week?.yearInstanceId);
+  const linkedCourseId =
+    typeof (yearInstance || week?.yearInstanceId)?.courseId === 'string'
+      ? (yearInstance || week?.yearInstanceId)?.courseId
+      : (yearInstance || week?.yearInstanceId)?.courseId?._id;
+  const linkedCourseTitle =
+    (yearInstance || week?.yearInstanceId)?.courseId?.title || '';
   const [uploading, setUploading] = useState(false);
   const [uploadState, setUploadState] = useState({
     title: `${week?.title || 'Week material'} community PDF`,
@@ -114,6 +120,17 @@ export default function WeekDetail({ week, yearInstance, navigationSlot = null }
             </div>
           ) : null}
         </div>
+
+        {linkedCourseId ? (
+          <div className="mt-4">
+            <Link
+              href={`/dashboard/discussion?courseId=${linkedCourseId}&courseTitle=${encodeURIComponent(linkedCourseTitle)}`}
+              className="inline-flex items-center rounded-full border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
+            >
+              Open course discussion branch
+            </Link>
+          </div>
+        ) : null}
       </div>
 
       {navigationSlot}
@@ -148,7 +165,7 @@ export default function WeekDetail({ week, yearInstance, navigationSlot = null }
                   <div>
                     <p className="text-base font-semibold text-slate-900">Upload a community PDF</p>
                     <p className="mt-1 text-sm text-slate-500">
-                      Students can submit missing solution PDFs here. Admin verification will be added later, so every upload is stored as pending review for now.
+                      Students can submit missing PDFs here. Admin review will publish approved files into this week automatically.
                     </p>
                   </div>
                 </div>

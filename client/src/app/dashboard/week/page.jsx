@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle, MessageCircle, X } from 'lucide-react';
 import WeekDetail from '@/components/WeekDetail';
@@ -41,7 +41,7 @@ const getBatchLabel = (instance) => {
   return `${instance.year} - ${instance.semester}`;
 };
 
-export default function WeekPage() {
+function WeekPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { selectedYear, setSelectedWeek, setSelectedYear } = useStore((state) => ({
@@ -342,5 +342,19 @@ export default function WeekPage() {
         </>
       ) : null}
     </div>
+  );
+}
+
+export default function WeekPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-slate-600 shadow-sm">
+          Loading week content...
+        </div>
+      }
+    >
+      <WeekPageContent />
+    </Suspense>
   );
 }

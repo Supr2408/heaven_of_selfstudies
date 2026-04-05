@@ -1,4 +1,12 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
+
+export const resolveApiAssetUrl = (url = '') => {
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith('/')) return `${API_ORIGIN}${url}`;
+  return `${API_ORIGIN}/${url.replace(/^\/+/, '')}`;
+};
 
 /**
  * Sleep utility for retries
@@ -202,11 +210,23 @@ export const resourceAPI = {
     const query = new URLSearchParams(params).toString();
     return apiRequest(`/resources/resources/${weekId}?${query}`);
   },
+  getCourseResources: (courseId, params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/resources/course/${courseId}?${query}`);
+  },
   getResource: (id) => apiRequest(`/resources/resource/${id}`),
   getTrendingResources: (weekId) => apiRequest(`/resources/trending/${weekId}`),
   createResource: (data) => apiRequest('/resources/resources', { method: 'POST', body: data }),
   uploadResourcePdf: (formData) =>
     apiFormRequest('/resources/resources/upload', formData, { method: 'POST' }),
+  getReviewQueue: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/resources/admin/review-queue${query ? `?${query}` : ''}`);
+  },
+  approveReviewSubmission: (id, data = {}) =>
+    apiRequest(`/resources/admin/review-queue/${id}/approve`, { method: 'POST', body: data }),
+  rejectReviewSubmission: (id, data = {}) =>
+    apiRequest(`/resources/admin/review-queue/${id}/reject`, { method: 'POST', body: data }),
   updateResource: (id, data) => apiRequest(`/resources/resources/${id}`, { method: 'PUT', body: data }),
   deleteResource: (id) => apiRequest(`/resources/resources/${id}`, { method: 'DELETE' }),
   upvoteResource: (id) => apiRequest(`/resources/resources/${id}/upvote`, { method: 'POST' }),

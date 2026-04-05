@@ -5,7 +5,16 @@ const resourceSchema = new mongoose.Schema(
     weekId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Week',
-      required: [true, 'Please provide week'],
+      required() {
+        return ['week-discussion', 'week-material'].includes(this.branchType || 'week-discussion');
+      },
+    },
+    courseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Course',
+      required() {
+        return this.branchType === 'course-discussion';
+      },
     },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -26,6 +35,30 @@ const resourceSchema = new mongoose.Schema(
       type: String,
       enum: ['note', 'link', 'solution', 'discussion', 'resource'],
       required: [true, 'Please specify resource type'],
+    },
+    branchType: {
+      type: String,
+      enum: ['week-discussion', 'week-material', 'course-discussion'],
+      default: 'week-discussion',
+    },
+    reviewStatus: {
+      type: String,
+      enum: ['approved', 'pending', 'rejected'],
+      default: 'approved',
+    },
+    reviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    reviewedAt: {
+      type: Date,
+      default: null,
+    },
+    reviewerNote: {
+      type: String,
+      maxlength: 1000,
+      default: '',
     },
     url: {
       type: String,
@@ -103,7 +136,9 @@ const resourceSchema = new mongoose.Schema(
 
 // Index for efficient querying
 resourceSchema.index({ weekId: 1, createdAt: -1 });
+resourceSchema.index({ courseId: 1, createdAt: -1 });
 resourceSchema.index({ userId: 1 });
 resourceSchema.index({ type: 1 });
+resourceSchema.index({ branchType: 1, reviewStatus: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Resource', resourceSchema);

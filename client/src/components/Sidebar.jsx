@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, Home, BookOpen, MessageSquare, X } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { courseAPI, yearInstanceAPI } from '@/lib/api';
+import { isAdminUser } from '@/lib/user';
 import useStore from '@/store/useStore';
 
 const SEMESTER_MONTHS = {
@@ -37,9 +38,12 @@ const groupWeeksByMonth = (weeks = [], semester) => {
 
 export default function Sidebar() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const {
     sidebarOpen,
     selectedWeek,
+    user,
     contentVersion,
     setSidebarOpen,
     setSelectedSubject,
@@ -49,6 +53,7 @@ export default function Sidebar() {
   } = useStore((state) => ({
     sidebarOpen: state.sidebarOpen,
     selectedWeek: state.selectedWeek,
+    user: state.user,
     contentVersion: state.contentVersion,
     setSidebarOpen: state.setSidebarOpen,
     setSelectedSubject: state.setSelectedSubject,
@@ -66,6 +71,9 @@ export default function Sidebar() {
   const [expandedMonths, setExpandedMonths] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const activeCourseDiscussionId =
+    pathname === '/dashboard/discussion' ? searchParams?.get('courseId') || '' : '';
+  const isAdminRoute = pathname === '/dashboard/admin';
 
   const closeSidebarOnMobile = () => {
     if (typeof window !== 'undefined' && window.innerWidth < 768) {
@@ -220,6 +228,17 @@ export default function Sidebar() {
     router.push(`/dashboard/week?weekId=${week._id}`);
   };
 
+  const handleCourseDiscussionSelect = (course, subject) => {
+    setSelectedSubject(subject);
+    setSelectedCourse(course);
+    setSelectedYear(null);
+    setSelectedWeek(null);
+    closeSidebarOnMobile();
+    router.push(
+      `/dashboard/discussion?courseId=${course._id}&courseTitle=${encodeURIComponent(course.title || '')}`
+    );
+  };
+
   // ------------------------------------------------------------------------
   return (
     <aside
@@ -296,6 +315,25 @@ export default function Sidebar() {
           </div>
         </Link>
 
+        {isAdminUser(user) ? (
+          <Link href="/dashboard/admin" onClick={closeSidebarOnMobile}>
+            <div
+              className={`flex items-center justify-between rounded-lg px-3 py-2 transition-colors cursor-pointer ${
+                isAdminRoute ? 'bg-slate-800 text-white' : 'hover:bg-slate-800'
+              }`}
+            >
+              {sidebarOpen ? (
+                <div className="flex items-center gap-2 flex-1">
+                  <MessageSquare size={18} />
+                  <span className="text-sm font-medium">Admin Review</span>
+                </div>
+              ) : (
+                <MessageSquare size={18} />
+              )}
+            </div>
+          </Link>
+        ) : null}
+
         {sidebarOpen && <div className="border-t border-slate-700 my-2" />}
 
         {loading && sidebarOpen && (
@@ -355,6 +393,21 @@ export default function Sidebar() {
 
                           {expandedCourse === course._id && (
                             <div className="ml-3 mt-1 space-y-1 border-l border-slate-800 pl-2">
+                              <button
+                                onClick={() => handleCourseDiscussionSelect(course, subject)}
+                                className={`flex w-full items-center justify-between rounded px-3 py-2 text-left text-xs transition-colors ${
+                                  activeCourseDiscussionId === course._id
+                                    ? 'bg-blue-600 text-white'
+                                    : 'text-slate-200 hover:bg-slate-800'
+                                }`}
+                              >
+                                <span className="inline-flex items-center gap-2">
+                                  <MessageSquare size={13} />
+                                  Discussion
+                                </span>
+                                <ChevronRight size={12} />
+                              </button>
+
                               {courseInstances.length === 0 && !loading ? (
                                 <div className="text-xs text-slate-500 px-2 py-1">
                                   Batches coming soon

@@ -3,6 +3,8 @@ export const getPublicUserName = (user) =>
 
 export const isGoogleUser = (user) => user?.authProvider === 'google';
 
+export const isAdminUser = (user) => user?.role === 'admin';
+
 export const isGuestLikeUser = (user) =>
   user?.authProvider === 'guest' || user?.authProvider === 'demo';
 

@@ -193,6 +193,44 @@ const removeBrokenUploadedMaterials = async (week) => {
   return week;
 };
 
+const removeBrokenMaterialByUrl = async (week, brokenUrl = '') => {
+  const targetUrl = String(brokenUrl || '').trim();
+  if (!week || !targetUrl || !Array.isArray(week.materials) || week.materials.length === 0) {
+    return week;
+  }
+
+  const nextMaterials = week.materials.filter((material) => String(material?.url || '') !== targetUrl);
+  if (nextMaterials.length === week.materials.length) {
+    return week;
+  }
+
+  week.materials = nextMaterials;
+  await week.save();
+
+  await Resource.updateMany(
+    {
+      weekId: week._id,
+      url: targetUrl,
+      branchType: 'week-material',
+      isDeleted: { $ne: true },
+    },
+    {
+      $set: {
+        isDeleted: true,
+        isVerified: false,
+        reviewStatus: 'rejected',
+        reviewerNote: 'Automatically removed because the uploaded file could not be loaded.',
+        reviewedAt: new Date(),
+      },
+      $addToSet: {
+        tags: 'missing-upload',
+      },
+    }
+  );
+
+  return week;
+};
+
 /**
  * Get all year instances for the current view.
  *
@@ -715,6 +753,7 @@ exports.proxyWeekMaterialPdf = catchAsync(async (req, res, next) => {
   ];
 
   let lastFailureMessage = 'Unable to load this PDF right now';
+  let brokenMaterialUrl = '';
 
   for (const candidateIndex of candidateIndexes) {
     const material = week.materials[candidateIndex];
@@ -727,6 +766,7 @@ exports.proxyWeekMaterialPdf = catchAsync(async (req, res, next) => {
       const localFilePath = resolveUploadUrlToPath(material.url);
       if (!localFilePath) {
         lastFailureMessage = 'Invalid uploaded PDF path';
+        brokenMaterialUrl = material.url;
         continue;
       }
 
@@ -734,6 +774,7 @@ exports.proxyWeekMaterialPdf = catchAsync(async (req, res, next) => {
         await removeBrokenUploadedMaterials(week);
         lastFailureMessage =
           'This uploaded PDF is no longer available. Please upload it again for admin review.';
+        brokenMaterialUrl = material.url;
         continue;
       }
 
@@ -781,11 +822,17 @@ exports.proxyWeekMaterialPdf = catchAsync(async (req, res, next) => {
           contentType,
         });
         lastFailureMessage = 'Unable to load this material as a PDF';
+        brokenMaterialUrl = material.url;
       } catch (error) {
         console.error('Error proxying week PDF material:', error.message);
         lastFailureMessage = 'Unable to load this PDF right now';
+        brokenMaterialUrl = material.url;
       }
     }
+  }
+
+  if (brokenMaterialUrl) {
+    await removeBrokenMaterialByUrl(week, brokenMaterialUrl);
   }
 
   const finalStatus =

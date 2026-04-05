@@ -70,13 +70,15 @@ function WeekPageContent() {
   const [chatOpen, setChatOpen] = useState(false);
   const [batchMenuOpen, setBatchMenuOpen] = useState(false);
 
+  const activeWeek = week?._id && week._id === weekId ? week : null;
+
   const activeYearInstanceId =
-    week?.yearInstanceId?._id ||
+    activeWeek?.yearInstanceId?._id ||
     yearInstanceIdFromQuery ||
     (weekId ? '' : selectedYear?._id) ||
     '';
 
-  const courseId = getCourseId(week?.yearInstanceId || activeYearInstance);
+  const courseId = getCourseId(activeWeek?.yearInstanceId || activeYearInstance);
 
   useEffect(() => {
     const loadWeek = async () => {
@@ -110,7 +112,7 @@ function WeekPageContent() {
 
   useEffect(() => {
     const loadYearInstance = async () => {
-      if (!activeYearInstanceId || week?.yearInstanceId?._id === activeYearInstanceId) {
+      if (!activeYearInstanceId || activeWeek?.yearInstanceId?._id === activeYearInstanceId) {
         return;
       }
 
@@ -125,7 +127,7 @@ function WeekPageContent() {
     };
 
     loadYearInstance();
-  }, [activeYearInstanceId, setSelectedYear, week]);
+  }, [activeWeek, activeYearInstanceId, setSelectedYear]);
 
   useEffect(() => {
     const loadWeeks = async () => {
@@ -197,28 +199,28 @@ function WeekPageContent() {
   }, [courseId]);
 
   useEffect(() => {
-    if (!week?._id || !weeks.length) {
+    if (!activeWeek?._id || !weeks.length) {
       return;
     }
 
-    const weekYearInstanceId = week?.yearInstanceId?._id || '';
+    const weekYearInstanceId = activeWeek?.yearInstanceId?._id || '';
     if (!weekYearInstanceId || weekYearInstanceId !== activeYearInstanceId) {
       return;
     }
 
-    const isVisibleWeek = weeks.some((item) => item._id === week._id);
+    const isVisibleWeek = weeks.some((item) => item._id === activeWeek._id);
     if (isVisibleWeek) {
       return;
     }
 
-    const fallbackWeek = findBestWeek(weeks, Math.min(Number(week.weekNumber) || 1, 12));
+    const fallbackWeek = findBestWeek(weeks, Math.min(Number(activeWeek.weekNumber) || 1, 12));
     if (fallbackWeek?._id) {
       router.replace(`/dashboard/week?weekId=${fallbackWeek._id}`);
     }
-  }, [activeYearInstanceId, router, week, weeks]);
+  }, [activeWeek, activeYearInstanceId, router, weeks]);
 
   const openWeek = (nextWeekId) => {
-    if (!nextWeekId || nextWeekId === week?._id) return;
+    if (!nextWeekId || nextWeekId === activeWeek?._id) return;
     router.push(`/dashboard/week?weekId=${nextWeekId}`);
   };
 
@@ -232,7 +234,7 @@ function WeekPageContent() {
       const nextWeeks = normalizeVisibleWeeks(response?.data || []);
       setWeeksByInstance((prev) => ({ ...prev, [nextInstanceId]: nextWeeks }));
       setBatchMenuOpen(false);
-      const targetWeek = findBestWeek(nextWeeks, week?.weekNumber);
+      const targetWeek = findBestWeek(nextWeeks, activeWeek?.weekNumber);
 
       if (targetWeek?._id) {
         router.push(`/dashboard/week?weekId=${targetWeek._id}`);
@@ -246,7 +248,7 @@ function WeekPageContent() {
   };
 
   const roomCourseId = courseId || 'nptel-course';
-  const roomYear = activeYearInstance?.year || week?.yearInstanceId?.year || new Date().getFullYear();
+  const roomYear = activeYearInstance?.year || activeWeek?.yearInstanceId?.year || new Date().getFullYear();
   const trackedCourseTitle = activeYearInstance?.courseId?.title || '';
   const trackedCourseId = courseId || '';
   const trackedRoutePath =
@@ -288,12 +290,12 @@ function WeekPageContent() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-24 sm:space-y-8">
-      {week && trackedCourseId && trackedCourseTitle ? (
+      {activeWeek && trackedCourseId && trackedCourseTitle ? (
         <StudyTimeTracker
           courseId={trackedCourseId}
           courseTitle={trackedCourseTitle}
-          weekId={week._id}
-          weekTitle={week.title}
+          weekId={activeWeek._id}
+          weekTitle={activeWeek.title}
           yearInstanceId={activeYearInstanceId}
           routePath={trackedRoutePath}
         />
@@ -310,11 +312,11 @@ function WeekPageContent() {
         <div className="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-slate-600 shadow-sm">
           Loading week content...
         </div>
-      ) : week ? (
+      ) : activeWeek ? (
         <>
           <WeekDetail
-            week={week}
-            yearInstance={activeYearInstance || week?.yearInstanceId}
+            week={activeWeek}
+            yearInstance={activeYearInstance || activeWeek?.yearInstanceId}
             navigationSlot={
               <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -440,7 +442,7 @@ function WeekPageContent() {
             }
           />
 
-          <WeekDiscussions weekId={week._id} weekNumber={week.weekNumber} weekTitle={week.title} />
+          <WeekDiscussions weekId={activeWeek._id} weekNumber={activeWeek.weekNumber} weekTitle={activeWeek.title} />
         </>
       ) : (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-slate-600">
@@ -448,14 +450,14 @@ function WeekPageContent() {
         </div>
       )}
 
-      {week ? (
+      {activeWeek ? (
         <>
           {chatOpen ? (
             <div className="fixed bottom-20 right-3 z-40 w-[min(460px,calc(100vw-0.75rem))] sm:bottom-24 sm:right-6 sm:w-[min(460px,calc(100vw-1.5rem))]">
               <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl shadow-slate-900/15">
                 <div className="flex items-center justify-between border-b border-slate-200 bg-slate-950 px-5 py-4 text-white">
                   <div>
-                    <p className="text-lg font-semibold">Week {week.weekNumber} Quick Chat</p>
+                    <p className="text-lg font-semibold">Week {activeWeek.weekNumber} Quick Chat</p>
                     <p className="text-xs text-slate-300">Temporary instant discussion</p>
                   </div>
                   <button
@@ -468,10 +470,10 @@ function WeekPageContent() {
                 </div>
 
                 <ChatRoom
-                  weekId={week._id}
+                  weekId={activeWeek._id}
                   courseId={roomCourseId}
                   year={roomYear}
-                  weekNumber={week.weekNumber}
+                  weekNumber={activeWeek.weekNumber}
                   onOpenDiscussion={openDiscussionBoard}
                 />
               </div>

@@ -112,6 +112,7 @@ export default function StudyPdfViewer({ src, storageKey, onLoadError = null }) 
   const [viewportWidth, setViewportWidth] = useState(0);
   const [error, setError] = useState('');
   const [annotationsReady, setAnnotationsReady] = useState(false);
+  const [useNativeViewer, setUseNativeViewer] = useState(false);
 
   const annotationStorageKey = useMemo(
     () => getAnnotationStorageKey(storageKey || src || 'default'),
@@ -141,6 +142,7 @@ export default function StudyPdfViewer({ src, storageKey, onLoadError = null }) 
     setError('');
     setPageSize({ width: 0, height: 0 });
     setTool(null);
+    setUseNativeViewer(false);
   }, [src]);
 
   useEffect(() => {
@@ -411,37 +413,47 @@ export default function StudyPdfViewer({ src, storageKey, onLoadError = null }) 
               height: renderHeight || undefined,
             }}
           >
-            <Document
-              file={src}
-              loading={<div className="p-10 text-center text-sm text-slate-500">Loading PDF...</div>}
-              onLoadSuccess={({ numPages: totalPages }) => {
-                setNumPages(totalPages);
-                setCurrentPage((current) => Math.min(current, totalPages || 1));
-                setError('');
-              }}
-              onLoadError={(loadError) => {
-                console.error(loadError);
-                setError('Unable to load this PDF in study mode right now.');
-                if (typeof onLoadError === 'function') {
-                  onLoadError(loadError);
-                }
-              }}
-              error={<div className="p-10 text-center text-sm text-red-600">{error || 'Unable to load this PDF.'}</div>}
-            >
-              <Page
-                pageNumber={currentPage}
-                width={renderWidth}
-                renderAnnotationLayer={false}
-                renderTextLayer={false}
-                loading={<div className="p-10 text-center text-sm text-slate-500">Rendering page...</div>}
-                onLoadSuccess={(page) => {
-                  const viewport = page.getViewport({ scale: 1 });
-                  setPageSize({ width: viewport.width, height: viewport.height });
-                }}
+            {useNativeViewer ? (
+              <iframe
+                title="PDF preview"
+                src={src}
+                className="h-full w-full border-0"
+                style={{ minHeight: renderHeight || '70vh' }}
               />
-            </Document>
+            ) : (
+              <Document
+                file={src}
+                loading={<div className="p-10 text-center text-sm text-slate-500">Loading PDF...</div>}
+                onLoadSuccess={({ numPages: totalPages }) => {
+                  setNumPages(totalPages);
+                  setCurrentPage((current) => Math.min(current, totalPages || 1));
+                  setError('');
+                }}
+                onLoadError={(loadError) => {
+                  console.error(loadError);
+                  setError('Unable to load this PDF in study mode right now.');
+                  setUseNativeViewer(true);
+                  if (typeof onLoadError === 'function') {
+                    onLoadError(loadError);
+                  }
+                }}
+                error={<div className="p-10 text-center text-sm text-red-600">{error || 'Unable to load this PDF.'}</div>}
+              >
+                <Page
+                  pageNumber={currentPage}
+                  width={renderWidth}
+                  renderAnnotationLayer={false}
+                  renderTextLayer={false}
+                  loading={<div className="p-10 text-center text-sm text-slate-500">Rendering page...</div>}
+                  onLoadSuccess={(page) => {
+                    const viewport = page.getViewport({ scale: 1 });
+                    setPageSize({ width: viewport.width, height: viewport.height });
+                  }}
+                />
+              </Document>
+            )}
 
-            {editorEnabled && renderWidth && renderHeight ? (
+            {editorEnabled && renderWidth && renderHeight && !useNativeViewer ? (
               <canvas
                 ref={canvasRef}
                 className={`absolute inset-0 touch-none ${

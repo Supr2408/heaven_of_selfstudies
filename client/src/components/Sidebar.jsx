@@ -5,36 +5,15 @@ import { ChevronDown, ChevronRight, Home, BookOpen, MessageSquare, X } from 'luc
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { courseAPI, yearInstanceAPI } from '@/lib/api';
+import {
+  getAvailabilityMeta,
+  getSemesterMonths,
+  groupWeeksByMonth,
+  hasWeekStudyContent,
+  summarizeWeeksAvailability,
+} from '@/lib/contentAvailability';
 import { isAdminUser } from '@/lib/user';
 import useStore from '@/store/useStore';
-
-const SEMESTER_MONTHS = {
-  'Jan-Apr': ['January', 'February', 'March', 'April'],
-  'Jul-Oct': ['July', 'August', 'September', 'October'],
-  'July-Oct': ['July', 'August', 'September', 'October'],
-  'Aug-Oct': ['August', 'September', 'October'],
-};
-
-const getSemesterMonths = (semester) => SEMESTER_MONTHS[semester] || ['General'];
-
-const groupWeeksByMonth = (weeks = [], semester) => {
-  if (!weeks.length) return [];
-
-  const months = getSemesterMonths(semester);
-  const sortedWeeks = [...weeks].sort((a, b) => a.weekNumber - b.weekNumber);
-  const weeksPerMonth = Math.max(1, Math.ceil(sortedWeeks.length / months.length));
-
-  return months
-    .map((month, index) => {
-      const start = index * weeksPerMonth;
-      const end = start + weeksPerMonth;
-      return {
-        month,
-        weeks: sortedWeeks.slice(start, end),
-      };
-    })
-    .filter((bucket) => bucket.weeks.length > 0);
-};
 
 export default function Sidebar() {
   const router = useRouter();
@@ -61,6 +40,7 @@ export default function Sidebar() {
     setSelectedYear: state.setSelectedYear,
     setSelectedWeek: state.setSelectedWeek,
   }));
+
   const [subjects, setSubjects] = useState([]);
   const [coursesBySubject, setCoursesBySubject] = useState({});
   const [instancesByCourse, setInstancesByCourse] = useState({});
@@ -71,6 +51,7 @@ export default function Sidebar() {
   const [expandedMonths, setExpandedMonths] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
   const activeCourseDiscussionId =
     pathname === '/dashboard/discussion' ? searchParams?.get('courseId') || '' : '';
   const isAdminRoute = pathname === '/dashboard/admin';
@@ -81,7 +62,6 @@ export default function Sidebar() {
     }
   };
 
-  // Fetch subjects on mount
   useEffect(() => {
     const fetchSubjects = async () => {
       try {
@@ -99,7 +79,6 @@ export default function Sidebar() {
     fetchSubjects();
   }, [contentVersion]);
 
-  // Helper loaders ---------------------------------------------------------
   const loadCoursesForSubject = async (subjectId) => {
     if (coursesBySubject[subjectId]) {
       return coursesBySubject[subjectId];
@@ -128,12 +107,11 @@ export default function Sidebar() {
     }
 
     const response = await yearInstanceAPI.getWeeks(instanceId);
-    const data = (response.data || []).sort((a, b) => a.weekNumber - b.weekNumber);
+    const data = (response.data || []).sort((a, b) => (a.weekNumber || 0) - (b.weekNumber || 0));
     setWeeksByInstance((prev) => ({ ...prev, [instanceId]: data }));
     return data;
   };
 
-  // Interaction handlers ---------------------------------------------------
   const handleSubjectClick = async (subject) => {
     if (expandedSubject === subject._id) {
       setExpandedSubject(null);
@@ -167,7 +145,8 @@ export default function Sidebar() {
 
     try {
       setLoading(true);
-      await loadInstancesForCourse(course._id);
+      const instances = await loadInstancesForCourse(course._id);
+      await Promise.all(instances.map((instance) => loadWeeksForInstance(instance._id)));
       setExpandedCourse(course._id);
       setExpandedYearInstance(null);
       setSelectedSubject(subject);
@@ -239,7 +218,6 @@ export default function Sidebar() {
     );
   };
 
-  // ------------------------------------------------------------------------
   return (
     <aside
       className={`fixed left-0 top-0 z-40 h-screen overflow-y-auto bg-slate-900 text-white transition-all duration-300 md:translate-x-0 ${
@@ -248,15 +226,14 @@ export default function Sidebar() {
           : 'w-[min(85vw,20rem)] -translate-x-full md:w-20'
       }`}
     >
-      {/* Header */}
       <div className="border-b border-slate-700 p-4">
-        {sidebarOpen && (
+        {sidebarOpen ? (
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-sm font-bold">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500 text-sm font-bold">
                 NH
               </div>
-              <span className="font-bold text-lg">NPTEL Hub</span>
+              <span className="text-lg font-bold">NPTEL Hub</span>
             </div>
             <button
               type="button"
@@ -267,63 +244,64 @@ export default function Sidebar() {
               <X size={18} />
             </button>
           </div>
-        )}
-        {!sidebarOpen && (
+        ) : (
           <div className="hidden items-center gap-2 md:flex">
-            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-sm font-bold">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500 text-sm font-bold">
               NH
             </div>
           </div>
         )}
       </div>
 
-      {/* Navigation Items */}
-      <nav className="p-4 space-y-2">
+      <nav className="space-y-2 p-4">
         <Link href="/dashboard" onClick={closeSidebarOnMobile}>
-          <div className="flex items-center justify-between rounded-lg px-3 py-2 transition-colors cursor-pointer hover:bg-slate-800">
-            {sidebarOpen && (
-              <div className="flex items-center gap-2 flex-1">
+          <div className="cursor-pointer rounded-lg px-3 py-2 transition-colors hover:bg-slate-800">
+            {sidebarOpen ? (
+              <div className="flex items-center gap-2">
                 <Home size={18} />
                 <span className="text-sm font-medium">Dashboard</span>
               </div>
+            ) : (
+              <Home size={18} />
             )}
-            {!sidebarOpen && <Home size={18} />}
           </div>
         </Link>
 
         <Link href="/courses" onClick={closeSidebarOnMobile}>
-          <div className="flex items-center justify-between rounded-lg px-3 py-2 transition-colors cursor-pointer hover:bg-slate-800">
-            {sidebarOpen && (
-              <div className="flex items-center gap-2 flex-1">
+          <div className="cursor-pointer rounded-lg px-3 py-2 transition-colors hover:bg-slate-800">
+            {sidebarOpen ? (
+              <div className="flex items-center gap-2">
                 <BookOpen size={18} />
                 <span className="text-sm font-medium">Courses</span>
               </div>
+            ) : (
+              <BookOpen size={18} />
             )}
-            {!sidebarOpen && <BookOpen size={18} />}
           </div>
         </Link>
 
         <Link href="/assignments" onClick={closeSidebarOnMobile}>
-          <div className="flex items-center justify-between rounded-lg px-3 py-2 transition-colors cursor-pointer hover:bg-slate-800">
-            {sidebarOpen && (
-              <div className="flex items-center gap-2 flex-1">
+          <div className="cursor-pointer rounded-lg px-3 py-2 transition-colors hover:bg-slate-800">
+            {sidebarOpen ? (
+              <div className="flex items-center gap-2">
                 <MessageSquare size={18} />
                 <span className="text-sm font-medium">Discussion</span>
               </div>
+            ) : (
+              <MessageSquare size={18} />
             )}
-            {!sidebarOpen && <MessageSquare size={18} />}
           </div>
         </Link>
 
         {isAdminUser(user) ? (
           <Link href="/dashboard/admin" onClick={closeSidebarOnMobile}>
             <div
-              className={`flex items-center justify-between rounded-lg px-3 py-2 transition-colors cursor-pointer ${
+              className={`cursor-pointer rounded-lg px-3 py-2 transition-colors ${
                 isAdminRoute ? 'bg-slate-800 text-white' : 'hover:bg-slate-800'
               }`}
             >
               {sidebarOpen ? (
-                <div className="flex items-center gap-2 flex-1">
+                <div className="flex items-center gap-2">
                   <MessageSquare size={18} />
                   <span className="text-sm font-medium">Admin Review</span>
                 </div>
@@ -334,27 +312,44 @@ export default function Sidebar() {
           </Link>
         ) : null}
 
-        {sidebarOpen && <div className="border-t border-slate-700 my-2" />}
+        {sidebarOpen ? <div className="my-2 border-t border-slate-700" /> : null}
 
-        {loading && sidebarOpen && (
-          <div className="text-xs text-slate-400">Loading latest structure…</div>
-        )}
+        {loading && sidebarOpen ? (
+          <div className="text-xs text-slate-400">Loading latest structure...</div>
+        ) : null}
 
-        {error && sidebarOpen && (
+        {error && sidebarOpen ? (
           <div className="text-xs text-red-300">{error}</div>
-        )}
+        ) : null}
+
+        {sidebarOpen ? (
+          <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-[11px] text-slate-300">
+            <div className="flex flex-wrap items-center gap-3">
+              {['full', 'partial', 'none'].map((status) => {
+                const meta = getAvailabilityMeta(status);
+                return (
+                  <span key={status} className="inline-flex items-center gap-1.5">
+                    <span className={`h-2.5 w-2.5 rounded-full ${meta.dotClass}`} />
+                    {meta.label}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
 
         {subjects.map((subject) => {
           const subjectCourses = coursesBySubject[subject._id] || [];
+
           return (
             <div key={subject._id}>
               <button
                 onClick={() => handleSubjectClick(subject)}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors"
+                className="flex w-full items-center justify-between rounded-lg px-3 py-2 transition-colors hover:bg-slate-800"
               >
                 {sidebarOpen ? (
                   <>
-                    <span className="text-sm font-medium truncate">{subject.name}</span>
+                    <span className="truncate text-sm font-medium">{subject.name}</span>
                     <ChevronDown
                       size={16}
                       className={`transition-transform ${
@@ -364,34 +359,35 @@ export default function Sidebar() {
                   </>
                 ) : (
                   <span className="text-lg" role="img" aria-label={subject.name}>
-                    {subject.icon || '📚'}
+                    {subject.icon || 'S'}
                   </span>
                 )}
               </button>
 
-              {expandedSubject === subject._id && sidebarOpen && (
+              {expandedSubject === subject._id && sidebarOpen ? (
                 <div className="ml-4 mt-1 space-y-1">
                   {subjectCourses.length === 0 && !loading ? (
-                    <div className="text-xs text-slate-400 px-3 py-1">No courses yet</div>
+                    <div className="px-3 py-1 text-xs text-slate-400">No courses yet</div>
                   ) : (
                     subjectCourses.map((course) => {
                       const courseInstances = instancesByCourse[course._id] || [];
+
                       return (
                         <div key={course._id}>
                           <button
                             onClick={() => handleCourseClick(course, subject)}
-                            className="w-full flex items-center justify-between px-3 py-1.5 rounded text-xs hover:bg-slate-700 transition-colors"
+                            className="flex w-full items-center justify-between rounded px-3 py-1.5 text-xs transition-colors hover:bg-slate-700"
                           >
                             <span className="truncate">{course.title}</span>
                             <ChevronDown
                               size={14}
-                              className={`transition-transform flex-shrink-0 ${
+                              className={`flex-shrink-0 transition-transform ${
                                 expandedCourse === course._id ? 'rotate-180' : ''
                               }`}
                             />
                           </button>
 
-                          {expandedCourse === course._id && (
+                          {expandedCourse === course._id ? (
                             <div className="ml-3 mt-1 space-y-1 border-l border-slate-800 pl-2">
                               <button
                                 onClick={() => handleCourseDiscussionSelect(course, subject)}
@@ -409,13 +405,15 @@ export default function Sidebar() {
                               </button>
 
                               {courseInstances.length === 0 && !loading ? (
-                                <div className="text-xs text-slate-500 px-2 py-1">
+                                <div className="px-2 py-1 text-xs text-slate-500">
                                   Batches coming soon
                                 </div>
                               ) : (
                                 courseInstances.map((instance) => {
                                   const weeks = weeksByInstance[instance._id] || [];
                                   const monthBuckets = groupWeeksByMonth(weeks, instance.semester);
+                                  const runSummary = summarizeWeeksAvailability(weeks);
+                                  const runMeta = getAvailabilityMeta(runSummary.status);
 
                                   return (
                                     <div key={instance._id} className="space-y-1">
@@ -423,56 +421,81 @@ export default function Sidebar() {
                                         onClick={() =>
                                           handleYearInstanceClick(instance, course, subject)
                                         }
-                                        className={`w-full flex items-center justify-between px-3 py-1.5 rounded text-xs transition-colors ${
+                                        className={`flex w-full items-center justify-between rounded px-3 py-1.5 text-xs transition-colors ${
                                           expandedYearInstance === instance._id
                                             ? 'bg-slate-800 text-white'
-                                            : 'hover:bg-slate-800 text-slate-200'
+                                            : 'text-slate-200 hover:bg-slate-800'
                                         }`}
                                       >
-                                        <span>
-                                          {instance.year} • {instance.semester}
+                                        <span className="inline-flex min-w-0 items-center gap-2">
+                                          <span className={`h-2.5 w-2.5 rounded-full ${runMeta.dotClass}`} />
+                                          <span className="truncate">
+                                            {instance.year} - {instance.semester}
+                                          </span>
                                         </span>
-                                        <ChevronRight
-                                          size={12}
-                                          className={`transition-transform ${
-                                            expandedYearInstance === instance._id
-                                              ? 'rotate-90'
-                                              : ''
-                                          }`}
-                                        />
+                                        <span className="inline-flex items-center gap-2">
+                                          {weeks.length ? (
+                                            <span
+                                              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${runMeta.badgeClass}`}
+                                            >
+                                              {runSummary.availableWeeks}/{runSummary.totalWeeks}
+                                            </span>
+                                          ) : null}
+                                          <ChevronRight
+                                            size={12}
+                                            className={`transition-transform ${
+                                              expandedYearInstance === instance._id
+                                                ? 'rotate-90'
+                                                : ''
+                                            }`}
+                                          />
+                                        </span>
                                       </button>
 
-                                      {expandedYearInstance === instance._id && (
+                                      {expandedYearInstance === instance._id ? (
                                         <div className="ml-3 space-y-1 border-l border-slate-800 pl-2">
                                           {weeks.length === 0 && !loading ? (
-                                            <div className="text-xs text-slate-500 px-2 py-1">
+                                            <div className="px-2 py-1 text-xs text-slate-500">
                                               Weeks will appear once downloaded
                                             </div>
                                           ) : (
                                             monthBuckets.map((bucket) => {
                                               const monthKey = `${instance._id}-${bucket.month}`;
                                               const isExpanded = expandedMonths[monthKey];
+                                              const bucketMeta = getAvailabilityMeta(bucket.status);
 
                                               return (
                                                 <div key={monthKey} className="space-y-1">
                                                   <button
                                                     onClick={() => handleMonthToggle(instance._id, bucket.month)}
-                                                    className="w-full flex items-center justify-between px-3 py-1 rounded text-[11px] uppercase tracking-wide text-slate-300 hover:bg-slate-800"
+                                                    className="flex w-full items-center justify-between rounded px-3 py-1 text-[11px] uppercase tracking-wide text-slate-300 hover:bg-slate-800"
                                                   >
-                                                    <span>{bucket.month}</span>
-                                                    <ChevronDown
-                                                      size={12}
-                                                      className={`transition-transform ${
-                                                        isExpanded ? 'rotate-180' : ''
-                                                      }`}
-                                                    />
+                                                    <span className="inline-flex items-center gap-2">
+                                                      <span className={`h-2 w-2 rounded-full ${bucketMeta.dotClass}`} />
+                                                      <span>{bucket.month}</span>
+                                                    </span>
+                                                    <span className="inline-flex items-center gap-2">
+                                                      <span
+                                                        className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal ${bucketMeta.badgeClass}`}
+                                                      >
+                                                        {bucket.availableWeeks}/{bucket.totalWeeks}
+                                                      </span>
+                                                      <ChevronDown
+                                                        size={12}
+                                                        className={`transition-transform ${
+                                                          isExpanded ? 'rotate-180' : ''
+                                                        }`}
+                                                      />
+                                                    </span>
                                                   </button>
 
-                                                  {isExpanded && (
+                                                  {isExpanded ? (
                                                     <div className="ml-3 space-y-1">
                                                       {bucket.weeks.map((week) => {
                                                         const isSelected =
                                                           selectedWeek?._id === week._id;
+                                                        const hasContent = hasWeekStudyContent(week);
+
                                                         return (
                                                           <button
                                                             key={week._id}
@@ -481,44 +504,51 @@ export default function Sidebar() {
                                                                 week,
                                                                 course,
                                                                 instance,
-                                                                subject,
+                                                                subject
                                                               )
                                                             }
-                                                            className={`w-full text-left px-3 py-1.5 rounded text-xs transition-colors ${
+                                                            className={`w-full rounded px-3 py-1.5 text-left text-xs transition-colors ${
                                                               isSelected
                                                                 ? 'bg-blue-600 text-white'
-                                                                : 'text-slate-200 hover:bg-slate-800'
+                                                                : hasContent
+                                                                  ? 'text-slate-100 hover:bg-slate-800'
+                                                                  : 'text-slate-300 hover:bg-slate-800'
                                                             }`}
                                                           >
-                                                            <div className="font-medium">
+                                                            <div className="flex items-center gap-2 font-medium">
+                                                              <span
+                                                                className={`h-2 w-2 rounded-full ${
+                                                                  hasContent ? 'bg-emerald-400' : 'bg-rose-400'
+                                                                }`}
+                                                              />
                                                               Week {week.weekNumber}
                                                             </div>
-                                                            <div className="text-[11px] text-slate-400 truncate">
+                                                            <div className="mt-0.5 truncate text-[11px] text-slate-400">
                                                               {week.title}
                                                             </div>
                                                           </button>
                                                         );
                                                       })}
                                                     </div>
-                                                  )}
+                                                  ) : null}
                                                 </div>
                                               );
                                             })
                                           )}
                                         </div>
-                                      )}
+                                      ) : null}
                                     </div>
                                   );
                                 })
                               )}
                             </div>
-                          )}
+                          ) : null}
                         </div>
                       );
                     })
                   )}
                 </div>
-              )}
+              ) : null}
             </div>
           );
         })}

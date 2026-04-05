@@ -17,6 +17,7 @@ import {
   UploadCloud,
 } from 'lucide-react';
 import { resourceAPI, resolveApiAssetUrl } from '@/lib/api';
+import { MAX_COMMUNITY_PDF_LABEL, validateCommunityPdfFile } from '@/lib/pdfUploads';
 import { getPublicUserName, isGoogleUser, isGuestLikeUser } from '@/lib/user';
 import useStore from '@/store/useStore';
 
@@ -243,8 +244,9 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
       return;
     }
 
-    if (!uploadState.file) {
-      alert('Please choose a PDF file to upload.');
+    const fileValidationError = validateCommunityPdfFile(uploadState.file);
+    if (fileValidationError) {
+      alert(fileValidationError);
       return;
     }
 
@@ -555,16 +557,24 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
                   type="file"
                   accept="application/pdf,.pdf"
                   onChange={(event) =>
-                    setUploadState((state) => ({
-                      ...state,
-                      file: event.target.files?.[0] || null,
-                    }))
+                    {
+                      const nextFile = event.target.files?.[0] || null;
+                      const fileError = nextFile ? validateCommunityPdfFile(nextFile) : '';
+                      if (fileError) {
+                        alert(fileError);
+                      }
+                      setUploadState((state) => ({
+                        ...state,
+                        file: fileError ? null : nextFile,
+                      }));
+                    }
                   }
                   className="block w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 file:mr-4 file:rounded-full file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-blue-700"
                 />
                 {uploadState.file ? (
                   <p className="mt-2 text-xs text-slate-500">{uploadState.file.name}</p>
                 ) : null}
+                <p className="mt-2 text-xs text-slate-500">PDF only. Maximum size: {MAX_COMMUNITY_PDF_LABEL}.</p>
               </div>
             </div>
           </div>

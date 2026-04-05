@@ -8,6 +8,12 @@ import WeekDiscussions from '@/components/WeekDiscussions';
 import ChatRoom from '@/components/ChatRoom';
 import StudyTimeTracker from '@/components/StudyTimeTracker';
 import { yearInstanceAPI } from '@/lib/api';
+import {
+  getAvailabilityMeta,
+  groupWeeksByMonth,
+  hasWeekStudyContent,
+  summarizeWeeksAvailability,
+} from '@/lib/contentAvailability';
 import useStore from '@/store/useStore';
 
 const getCourseId = (yearInstance) =>
@@ -207,8 +213,17 @@ function WeekPageContent() {
         id: item._id,
         label: item.weekNumber,
         active: item._id === week?._id,
+        hasContent: hasWeekStudyContent(item),
       })),
     [week?._id, weeks]
+  );
+
+  const batchAvailability = useMemo(() => summarizeWeeksAvailability(weeks), [weeks]);
+  const batchAvailabilityMeta = getAvailabilityMeta(batchAvailability.status);
+
+  const monthAvailability = useMemo(
+    () => groupWeeksByMonth(weeks, activeYearInstance?.semester || week?.yearInstanceId?.semester || ''),
+    [activeYearInstance?.semester, week?.yearInstanceId?.semester, weeks]
   );
 
   return (
@@ -269,6 +284,54 @@ function WeekPageContent() {
                 </div>
 
                 <div className="mt-5 overflow-x-auto pb-1">
+                  <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">
+                          Material availability for this batch
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Green means the grouped weeks have full material coverage, yellow means partial coverage, and red means content is still missing.
+                        </p>
+                      </div>
+                      <div
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${batchAvailabilityMeta.badgeClass}`}
+                      >
+                        <span className={`h-2.5 w-2.5 rounded-full ${batchAvailabilityMeta.dotClass}`} />
+                        {batchAvailability.availableWeeks}/{batchAvailability.totalWeeks} weeks ready
+                      </div>
+                    </div>
+
+                    {monthAvailability.length ? (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        {monthAvailability.map((bucket) => {
+                          const bucketMeta = getAvailabilityMeta(bucket.status);
+                          return (
+                            <div
+                              key={bucket.month}
+                              className={`rounded-2xl border px-4 py-3 ${bucketMeta.panelClass}`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                                  <span className={`h-2.5 w-2.5 rounded-full ${bucketMeta.dotClass}`} />
+                                  {bucket.month}
+                                </span>
+                                <span
+                                  className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${bucketMeta.badgeClass}`}
+                                >
+                                  {bucketMeta.label}
+                                </span>
+                              </div>
+                              <p className="mt-2 text-xs text-slate-600">
+                                {bucket.availableWeeks} of {bucket.totalWeeks} weeks have materials.
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+
                   <div className="flex min-w-max gap-2 sm:gap-3">
                     {loadingWeeks ? (
                       <div className="text-sm text-slate-500">Loading weeks...</div>
@@ -280,10 +343,19 @@ function WeekPageContent() {
                           className={`rounded-2xl border px-4 py-2.5 text-sm font-semibold transition sm:px-5 sm:py-3 ${
                             item.active
                               ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
-                              : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-200 hover:bg-blue-50'
+                              : item.hasContent
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100'
+                                : 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100'
                           }`}
                         >
-                          Week {item.label}
+                          <span className="inline-flex items-center gap-2">
+                            <span
+                              className={`h-2.5 w-2.5 rounded-full ${
+                                item.active ? 'bg-white' : item.hasContent ? 'bg-emerald-500' : 'bg-rose-500'
+                              }`}
+                            />
+                            Week {item.label}
+                          </span>
                         </button>
                       ))
                     )}

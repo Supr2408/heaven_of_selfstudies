@@ -17,6 +17,27 @@ const isNetworkError = (error) =>
   error instanceof TypeError ||
   /failed to fetch|networkerror|load failed/i.test(String(error?.message || ''));
 
+const getUnexpectedResponseMessage = (response, rawText = '') => {
+  if (response.status === 413) {
+    return 'PDF file is too large. Please upload a file smaller than 20 MB.';
+  }
+
+  if (response.status === 415) {
+    return 'Only PDF files are supported for this upload.';
+  }
+
+  if (response.status >= 500) {
+    return 'The server could not process this request right now. Please try again in a moment.';
+  }
+
+  const trimmedText = String(rawText || '').trim();
+  if (trimmedText && !trimmedText.startsWith('<')) {
+    return trimmedText;
+  }
+
+  return response.statusText || 'Server error';
+};
+
 /**
  * HTTP Client wrapper with retry logic for rate limiting
  */
@@ -55,11 +76,13 @@ const apiClient = async (endpoint, options = {}) => {
 
       // Parse response
       let data;
+      const responseText = await response.text();
       try {
-        data = await response.json();
+        data = responseText ? JSON.parse(responseText) : {};
       } catch {
-        // Handle non-JSON responses
-        data = { message: response.statusText || 'Server error' };
+        data = {
+          message: getUnexpectedResponseMessage(response, responseText),
+        };
       }
 
       if (!response.ok) {

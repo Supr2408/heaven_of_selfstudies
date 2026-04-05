@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { FileText, Loader2, UploadCloud } from 'lucide-react';
 import StudyPdfViewer from '@/components/StudyPdfViewer';
 import { resourceAPI } from '@/lib/api';
+import { MAX_COMMUNITY_PDF_LABEL, validateCommunityPdfFile } from '@/lib/pdfUploads';
 import { isGoogleUser, isGuestLikeUser } from '@/lib/user';
 import useStore from '@/store/useStore';
 
@@ -66,10 +67,11 @@ export default function WeekDetail({ week, yearInstance, navigationSlot = null }
       return;
     }
 
-    if (!uploadState.file) {
+    const fileValidationError = validateCommunityPdfFile(uploadState.file);
+    if (fileValidationError) {
       setUploadState((state) => ({
         ...state,
-        error: 'Please choose a PDF file to upload.',
+        error: fileValidationError,
         message: '',
       }));
       return;
@@ -210,18 +212,23 @@ export default function WeekDetail({ week, yearInstance, navigationSlot = null }
                       type="file"
                       accept="application/pdf,.pdf"
                       onChange={(event) =>
-                        setUploadState((state) => ({
-                          ...state,
-                          file: event.target.files?.[0] || null,
-                          error: '',
-                          message: '',
-                        }))
+                        {
+                          const nextFile = event.target.files?.[0] || null;
+                          const fileError = nextFile ? validateCommunityPdfFile(nextFile) : '';
+                          setUploadState((state) => ({
+                            ...state,
+                            file: fileError ? null : nextFile,
+                            error: fileError,
+                            message: '',
+                          }));
+                        }
                       }
                       className="block w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 file:mr-4 file:rounded-full file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-blue-700"
                     />
                     {uploadState.file ? (
                       <p className="mt-2 text-xs text-slate-500">{uploadState.file.name}</p>
                     ) : null}
+                    <p className="mt-2 text-xs text-slate-500">PDF only. Maximum size: {MAX_COMMUNITY_PDF_LABEL}.</p>
                   </div>
 
                   {uploadState.error ? (

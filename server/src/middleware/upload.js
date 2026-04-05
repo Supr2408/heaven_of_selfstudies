@@ -1,6 +1,9 @@
 const multer = require('multer');
 const path = require('path');
 const { communityUploadsRoot } = require('../utils/uploadStorage');
+const { AppError } = require('../utils/errorHandler');
+
+const MAX_COMMUNITY_PDF_BYTES = 20 * 1024 * 1024;
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -28,14 +31,36 @@ const fileFilter = (_req, file, cb) => {
   cb(new Error('Only PDF files are allowed'));
 };
 
-const uploadCommunityPdf = multer({
+const communityPdfUpload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 20 * 1024 * 1024,
+    fileSize: MAX_COMMUNITY_PDF_BYTES,
   },
 }).single('file');
 
+const uploadCommunityPdf = (req, res, next) => {
+  communityPdfUpload(req, res, (err) => {
+    if (!err) {
+      next();
+      return;
+    }
+
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        next(new AppError('PDF file must be 20 MB or smaller.', 400));
+        return;
+      }
+
+      next(new AppError(err.message || 'File upload failed.', 400));
+      return;
+    }
+
+    next(new AppError(err.message || 'File upload failed.', 400));
+  });
+};
+
 module.exports = {
   uploadCommunityPdf,
+  MAX_COMMUNITY_PDF_BYTES,
 };

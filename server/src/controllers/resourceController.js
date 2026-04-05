@@ -384,12 +384,28 @@ exports.createResource = catchAsync(async (req, res, next) => {
 exports.createUploadedResource = catchAsync(async (req, res, next) => {
   const { weekId, courseId, title, description, type = 'solution' } = req.body;
   const userId = req.user._id;
+  const cleanupUploadedFile = async () => {
+    const uploadedFilePath = req.file?.path;
+    if (!uploadedFilePath) {
+      return;
+    }
+
+    try {
+      await fs.promises.unlink(uploadedFilePath);
+    } catch (cleanupError) {
+      if (cleanupError?.code !== 'ENOENT') {
+        console.error('Failed to remove orphaned uploaded PDF:', cleanupError.message);
+      }
+    }
+  };
 
   if (!title || (!weekId && !courseId)) {
+    await cleanupUploadedFile();
     return next(new AppError('Please provide the target branch and title', 400));
   }
 
   if (weekId && courseId) {
+    await cleanupUploadedFile();
     return next(new AppError('Choose either a week branch or a course discussion branch', 400));
   }
 
@@ -404,40 +420,45 @@ exports.createUploadedResource = catchAsync(async (req, res, next) => {
     ? BRANCH_TYPES.COURSE_DISCUSSION
     : BRANCH_TYPES.WEEK_MATERIAL;
 
-  await ensureBranchTargetExists({
-    weekId,
-    courseId,
-    branchType: resolvedBranchType,
-  });
+  try {
+    await ensureBranchTargetExists({
+      weekId,
+      courseId,
+      branchType: resolvedBranchType,
+    });
 
-  const tags = ['pending-review', 'community-upload'];
-  tags.push(isCourseUpload ? 'course-discussion' : 'week-material');
+    const tags = ['pending-review', 'community-upload'];
+    tags.push(isCourseUpload ? 'course-discussion' : 'week-material');
 
-  const resource = await Resource.create({
-    weekId: isCourseUpload ? undefined : weekId,
-    courseId: isCourseUpload ? courseId : undefined,
-    userId,
-    title: sanitizeInput(title),
-    description: description
-      ? sanitizeInput(description)
-      : 'Submitted by the community for admin review.',
-    type: normalizedType,
-    branchType: resolvedBranchType,
-    reviewStatus: REVIEW_STATUS.PENDING,
-    url: relativeUrl,
-    fileType: 'pdf',
-    fileSize: req.file.size,
-    isVerified: false,
-    tags,
-  });
+    const resource = await Resource.create({
+      weekId: isCourseUpload ? undefined : weekId,
+      courseId: isCourseUpload ? courseId : undefined,
+      userId,
+      title: sanitizeInput(title),
+      description: description
+        ? sanitizeInput(description)
+        : 'Submitted by the community for admin review.',
+      type: normalizedType,
+      branchType: resolvedBranchType,
+      reviewStatus: REVIEW_STATUS.PENDING,
+      url: relativeUrl,
+      fileType: 'pdf',
+      fileSize: req.file.size,
+      isVerified: false,
+      tags,
+    });
 
-  await resource.populate('userId', 'name displayName avatar');
+    await resource.populate('userId', 'name displayName avatar');
 
-  res.status(201).json({
-    success: true,
-    message: 'PDF submitted for admin review',
-    data: resource,
-  });
+    res.status(201).json({
+      success: true,
+      message: 'PDF submitted for admin review',
+      data: resource,
+    });
+  } catch (error) {
+    await cleanupUploadedFile();
+    throw error;
+  }
 });
 
 /**

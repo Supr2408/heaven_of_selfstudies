@@ -27,12 +27,8 @@ export default function WeekDetail({ week, yearInstance, navigationSlot = null }
     (material) => (material?.fileType || '').toLowerCase() === 'pdf'
   );
   const firstPdf = firstPdfIndex >= 0 ? week.materials[firstPdfIndex] : null;
-  const firstPdfUrl = String(firstPdf?.url || '');
-  const isCloudinaryPdf = /^https?:\/\/res\.cloudinary\.com\//i.test(firstPdfUrl);
   const previewUrl =
-    isCloudinaryPdf
-      ? firstPdfUrl
-      : week?._id && firstPdfIndex >= 0
+    week?._id && firstPdfIndex >= 0
       ? `${API_BASE_URL}/weeks/week/${week._id}/materials/${firstPdfIndex}/pdf`
       : null;
 

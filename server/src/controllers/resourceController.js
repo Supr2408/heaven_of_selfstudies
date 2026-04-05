@@ -16,6 +16,7 @@ const REVIEW_STATUS = {
   PENDING: 'pending',
   REJECTED: 'rejected',
 };
+const INTERNAL_ANALYTICS_HEADER = 'x-analytics-shared-secret';
 
 const sanitizeTags = (tags = []) =>
   Array.isArray(tags)
@@ -26,6 +27,9 @@ const sanitizeTags = (tags = []) =>
 
 const normalizeResourceType = (type, fallback = 'discussion') =>
   RESOURCE_TYPES.includes(type) ? type : fallback;
+
+const sanitizeText = (value = '', maxLength = 200) =>
+  String(value || '').trim().slice(0, maxLength);
 
 const isLegacyPendingReview = (resource) =>
   !resource?.reviewStatus && Array.isArray(resource?.tags) && resource.tags.includes('pending-review');
@@ -63,6 +67,17 @@ const getReviewFilter = (status = REVIEW_STATUS.PENDING) => {
       },
     ],
   };
+};
+
+const assertInternalAnalyticsAccess = (req, next) => {
+  const expectedSecret = String(process.env.PRIVATE_ANALYTICS_SHARED_SECRET || '').trim();
+  const providedSecret = sanitizeText(req.header(INTERNAL_ANALYTICS_HEADER) || '', 200);
+
+  if (!expectedSecret || providedSecret !== expectedSecret) {
+    return next(new AppError('Invalid internal analytics secret.', 401));
+  }
+
+  return true;
 };
 
 const buildWeekDiscussionFilter = ({ weekId, type }) => {
@@ -168,6 +183,32 @@ const approveWeekMaterial = async (resource) => {
   }
 
   return week;
+};
+
+const loadReviewQueueResources = async (status = REVIEW_STATUS.PENDING) => {
+  const filter = {
+    isDeleted: { $ne: true },
+    tags: 'community-upload',
+    ...getReviewFilter(status),
+  };
+
+  return Resource.find(filter)
+    .populate('userId', 'name displayName avatar email')
+    .populate('courseId', 'title code')
+    .populate({
+      path: 'weekId',
+      select: 'title weekNumber yearInstanceId',
+      populate: {
+        path: 'yearInstanceId',
+        select: 'year semester courseId',
+        populate: {
+          path: 'courseId',
+          select: 'title code',
+        },
+      },
+    })
+    .populate('reviewedBy', 'name displayName email')
+    .sort({ createdAt: -1 });
 };
 
 /**
@@ -382,30 +423,7 @@ exports.createUploadedResource = catchAsync(async (req, res, next) => {
  */
 exports.getReviewQueue = catchAsync(async (req, res) => {
   const { status = REVIEW_STATUS.PENDING } = req.query;
-
-  const filter = {
-    isDeleted: { $ne: true },
-    tags: 'community-upload',
-    ...getReviewFilter(status),
-  };
-
-  const resources = await Resource.find(filter)
-    .populate('userId', 'name displayName avatar email')
-    .populate('courseId', 'title code')
-    .populate({
-      path: 'weekId',
-      select: 'title weekNumber yearInstanceId',
-      populate: {
-        path: 'yearInstanceId',
-        select: 'year semester courseId',
-        populate: {
-          path: 'courseId',
-          select: 'title code',
-        },
-      },
-    })
-    .populate('reviewedBy', 'name displayName email')
-    .sort({ createdAt: -1 });
+  const resources = await loadReviewQueueResources(status);
 
   res.status(200).json({
     success: true,
@@ -418,7 +436,7 @@ const finalizeReview = async ({ resource, reviewer, status, reviewerNote }) => {
   const normalizedBranchType = normalizeReviewBranchType(resource);
   resource.branchType = normalizedBranchType;
   resource.reviewStatus = status;
-  resource.reviewedBy = reviewer._id;
+  resource.reviewedBy = reviewer?._id || null;
   resource.reviewedAt = new Date();
   resource.reviewerNote = reviewerNote ? sanitizeInput(reviewerNote) : '';
   resource.isVerified = status === REVIEW_STATUS.APPROVED;
@@ -488,6 +506,75 @@ exports.rejectResourceSubmission = catchAsync(async (req, res, next) => {
   const updated = await finalizeReview({
     resource,
     reviewer: req.user,
+    status: REVIEW_STATUS.REJECTED,
+    reviewerNote,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Submission rejected successfully',
+    data: updated,
+  });
+});
+
+exports.getInternalReviewQueue = catchAsync(async (req, res, next) => {
+  if (!assertInternalAnalyticsAccess(req, next)) {
+    return;
+  }
+
+  const { status = REVIEW_STATUS.PENDING } = req.query;
+  const resources = await loadReviewQueueResources(status);
+
+  res.status(200).json({
+    success: true,
+    count: resources.length,
+    data: resources,
+  });
+});
+
+exports.approveInternalResourceSubmission = catchAsync(async (req, res, next) => {
+  if (!assertInternalAnalyticsAccess(req, next)) {
+    return;
+  }
+
+  const { id } = req.params;
+  const { reviewerNote = '' } = req.body || {};
+
+  const resource = await Resource.findById(id);
+  if (!resource) {
+    return next(new AppError('Submission not found', 404));
+  }
+
+  const updated = await finalizeReview({
+    resource,
+    reviewer: null,
+    status: REVIEW_STATUS.APPROVED,
+    reviewerNote,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Submission approved successfully',
+    data: updated,
+  });
+});
+
+exports.rejectInternalResourceSubmission = catchAsync(async (req, res, next) => {
+  if (!assertInternalAnalyticsAccess(req, next)) {
+    return;
+  }
+
+  const { id } = req.params;
+  const { reviewerNote = '' } = req.body || {};
+
+  const resource = await Resource.findById(id);
+  if (!resource) {
+    return next(new AppError('Submission not found', 404));
+  }
+
+  const updated = await finalizeReview({
+    resource,
+    reviewer: null,
     status: REVIEW_STATUS.REJECTED,
     reviewerNote,
   });

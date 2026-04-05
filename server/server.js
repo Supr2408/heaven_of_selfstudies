@@ -13,6 +13,7 @@ const { generalLimiter, authLimiter, chatLimiter } = require('./src/middleware/a
 const { initializeSocketIO } = require('./src/sockets/chat');
 const { initializeRedisAdapter } = require('./src/config/redisAdapter');
 const { createProductionIndexes } = require('./src/utils/mongoDbIndexes');
+const { uploadsRoot } = require('./src/utils/uploadStorage');
 
 // Route imports
 const authRoutes = require('./src/routes/authRoutes');
@@ -53,7 +54,7 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use(cookieParser());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(uploadsRoot));
 
 // Apply general rate limiter to all routes except health checks
 app.use((req, res, next) => {

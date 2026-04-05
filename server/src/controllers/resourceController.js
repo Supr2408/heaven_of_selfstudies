@@ -1,7 +1,9 @@
+const fs = require('fs');
 const Resource = require('../models/Resource');
 const Week = require('../models/Week');
 const Course = require('../models/Course');
 const { sanitizeInput } = require('../utils/validation');
+const { resolveUploadUrlToPath } = require('../utils/uploadStorage');
 const { AppError, catchAsync } = require('../utils/errorHandler');
 
 const RESOURCE_TYPES = ['note', 'link', 'solution', 'discussion', 'resource'];
@@ -209,6 +211,26 @@ const loadReviewQueueResources = async (status = REVIEW_STATUS.PENDING) => {
     })
     .populate('reviewedBy', 'name displayName email')
     .sort({ createdAt: -1 });
+};
+
+const streamReviewSubmissionFile = async (resource, res, next) => {
+  if (!resource?.url || !resource.url.startsWith('/uploads/')) {
+    return next(new AppError('This submission does not have a local uploaded file.', 404));
+  }
+
+  const filePath = resolveUploadUrlToPath(resource.url);
+  if (!filePath || !fs.existsSync(filePath)) {
+    return next(
+      new AppError(
+        'Uploaded file not found on the server. Configure persistent upload storage for production uploads.',
+        404
+      )
+    );
+  }
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${resource.title || 'submission'}.pdf"`);
+  return res.sendFile(filePath);
 };
 
 /**
@@ -517,6 +539,15 @@ exports.rejectResourceSubmission = catchAsync(async (req, res, next) => {
   });
 });
 
+exports.getReviewSubmissionFile = catchAsync(async (req, res, next) => {
+  const resource = await Resource.findById(req.params.id);
+  if (!resource) {
+    return next(new AppError('Submission not found', 404));
+  }
+
+  return streamReviewSubmissionFile(resource, res, next);
+});
+
 exports.getInternalReviewQueue = catchAsync(async (req, res, next) => {
   if (!assertInternalAnalyticsAccess(req, next)) {
     return;
@@ -530,6 +561,19 @@ exports.getInternalReviewQueue = catchAsync(async (req, res, next) => {
     count: resources.length,
     data: resources,
   });
+});
+
+exports.getInternalReviewSubmissionFile = catchAsync(async (req, res, next) => {
+  if (!assertInternalAnalyticsAccess(req, next)) {
+    return;
+  }
+
+  const resource = await Resource.findById(req.params.id);
+  if (!resource) {
+    return next(new AppError('Submission not found', 404));
+  }
+
+  return streamReviewSubmissionFile(resource, res, next);
 });
 
 exports.approveInternalResourceSubmission = catchAsync(async (req, res, next) => {

@@ -6,7 +6,9 @@ const {
   createResource,
   createUploadedResource,
   getReviewQueue,
+  getReviewSubmissionFile,
   getInternalReviewQueue,
+  getInternalReviewSubmissionFile,
   approveResourceSubmission,
   approveInternalResourceSubmission,
   rejectResourceSubmission,
@@ -33,11 +35,13 @@ router.get('/trending/:weekId', getTrendingResources);
 
 // Admin review routes
 router.get('/admin/review-queue', protectRoute, authorize('admin'), getReviewQueue);
+router.get('/admin/review-queue/:id/file', protectRoute, authorize('admin'), getReviewSubmissionFile);
 router.post('/admin/review-queue/:id/approve', protectRoute, authorize('admin'), approveResourceSubmission);
 router.post('/admin/review-queue/:id/reject', protectRoute, authorize('admin'), rejectResourceSubmission);
 
 // Internal review proxy routes for the private admin service
 router.get('/internal/review-queue', getInternalReviewQueue);
+router.get('/internal/review-queue/:id/file', getInternalReviewSubmissionFile);
 router.post('/internal/review-queue/:id/approve', approveInternalResourceSubmission);
 router.post('/internal/review-queue/:id/reject', rejectInternalResourceSubmission);
 

@@ -1,13 +1,10 @@
-const fs = require('fs');
-const path = require('path');
 const multer = require('multer');
-
-const uploadRoot = path.join(__dirname, '../../uploads/community');
-fs.mkdirSync(uploadRoot, { recursive: true });
+const path = require('path');
+const { communityUploadsRoot } = require('../utils/uploadStorage');
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    cb(null, uploadRoot);
+    cb(null, communityUploadsRoot);
   },
   filename: (_req, file, cb) => {
     const safeBase = path

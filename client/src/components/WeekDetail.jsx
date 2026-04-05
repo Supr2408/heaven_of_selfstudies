@@ -16,7 +16,7 @@ const getBatchLabel = (yearInstance) => {
   return `Batch ${yearInstance.year} - ${yearInstance.semester}`;
 };
 
-export default function WeekDetail({ week, yearInstance, navigationSlot = null }) {
+export default function WeekDetail({ week, yearInstance, navigationSlot = null, onPdfLoadError = null }) {
   const { isAuthenticated, user } = useStore((state) => ({
     isAuthenticated: state.isAuthenticated,
     user: state.user,
@@ -145,6 +145,7 @@ export default function WeekDetail({ week, yearInstance, navigationSlot = null }
             src={previewUrl}
             storageKey={`${week?._id || week?.weekNumber}-${firstPdfIndex}`}
             title={firstPdf?.title || `${week.title} PDF`}
+            onLoadError={onPdfLoadError}
           />
         ) : (
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-8">

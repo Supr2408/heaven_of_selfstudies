@@ -263,6 +263,22 @@ function WeekPageContent() {
     }
   };
 
+  const refreshCurrentWeek = async () => {
+    if (!weekId) return;
+
+    try {
+      const response = await yearInstanceAPI.getWeek(weekId);
+      const nextWeek = response?.data || null;
+      setWeek(nextWeek);
+      setSelectedWeek(nextWeek);
+
+      if (nextWeek?.yearInstanceId) {
+        setActiveYearInstance(nextWeek.yearInstanceId);
+        setSelectedYear(nextWeek.yearInstanceId);
+      }
+    } catch {}
+  };
+
   const weekButtons = useMemo(
     () =>
       weeks.map((item) => ({
@@ -317,6 +333,7 @@ function WeekPageContent() {
           <WeekDetail
             week={activeWeek}
             yearInstance={activeYearInstance || activeWeek?.yearInstanceId}
+            onPdfLoadError={refreshCurrentWeek}
             navigationSlot={
               <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

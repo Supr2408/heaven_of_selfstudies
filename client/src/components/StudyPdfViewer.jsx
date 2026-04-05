@@ -97,7 +97,7 @@ const drawStroke = (context, stroke, width, height) => {
   context.restore();
 };
 
-export default function StudyPdfViewer({ src, storageKey }) {
+export default function StudyPdfViewer({ src, storageKey, onLoadError = null }) {
   const shellRef = useRef(null);
   const canvasRef = useRef(null);
   const drawingRef = useRef(false);
@@ -422,6 +422,9 @@ export default function StudyPdfViewer({ src, storageKey }) {
               onLoadError={(loadError) => {
                 console.error(loadError);
                 setError('Unable to load this PDF in study mode right now.');
+                if (typeof onLoadError === 'function') {
+                  onLoadError(loadError);
+                }
               }}
               error={<div className="p-10 text-center text-sm text-red-600">{error || 'Unable to load this PDF.'}</div>}
             >

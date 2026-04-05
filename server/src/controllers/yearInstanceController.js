@@ -741,105 +741,97 @@ exports.proxyWeekMaterialPdf = catchAsync(async (req, res, next) => {
     );
   }
 
-  const candidateIndexes = [
-    index,
-    ...week.materials
-      .map((material, idx) => ({ material, idx }))
-      .filter(
-        ({ material, idx }) =>
-          idx !== index && String(material?.fileType || '').toLowerCase() === 'pdf'
-      )
-      .map(({ idx }) => idx),
-  ];
-
   let lastFailureMessage = 'Unable to load this PDF right now';
   let brokenMaterialUrl = '';
 
-  for (const candidateIndex of candidateIndexes) {
-    const material = week.materials[candidateIndex];
-    if (!material?.url) {
-      lastFailureMessage = 'Material URL is missing';
-      continue;
+  const material = week.materials[index];
+  if (!material?.url) {
+    return next(new AppError('Material URL is missing', 404));
+  }
+
+  if (material.url.startsWith('/uploads/')) {
+    const localFilePath = resolveUploadUrlToPath(material.url);
+    if (!localFilePath) {
+      brokenMaterialUrl = material.url;
+      await removeBrokenMaterialByUrl(week, brokenMaterialUrl);
+      return next(
+        new AppError(
+          'This uploaded PDF is no longer available. Please upload it again for admin review.',
+          410
+        )
+      );
     }
 
-    if (material.url.startsWith('/uploads/')) {
-      const localFilePath = resolveUploadUrlToPath(material.url);
-      if (!localFilePath) {
-        lastFailureMessage = 'Invalid uploaded PDF path';
-        brokenMaterialUrl = material.url;
-        continue;
-      }
-
-      if (!fs.existsSync(localFilePath)) {
-        await removeBrokenUploadedMaterials(week);
-        lastFailureMessage =
-          'This uploaded PDF is no longer available. Please upload it again for admin review.';
-        brokenMaterialUrl = material.url;
-        continue;
-      }
-
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', 'inline; filename="study-material.pdf"');
-      res.setHeader('Cache-Control', 'private, max-age=300');
-      return res.sendFile(localFilePath);
+    if (!fs.existsSync(localFilePath)) {
+      brokenMaterialUrl = material.url;
+      await removeBrokenMaterialByUrl(week, brokenMaterialUrl);
+      return next(
+        new AppError(
+          'This uploaded PDF is no longer available. Please upload it again for admin review.',
+          410
+        )
+      );
     }
 
-    const urlCandidates = buildMaterialPdfUrlCandidates(material.url);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="study-material.pdf"');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    return res.sendFile(localFilePath);
+  }
 
-    for (const pdfUrl of urlCandidates) {
-      try {
-        const response = await fetchPdfBuffer(pdfUrl);
-        const { buffer, isPdf, contentType } = isPdfBufferResponse(response);
+  const urlCandidates = buildMaterialPdfUrlCandidates(material.url);
 
-        if (isPdf) {
-          return sendPdfBuffer(res, buffer);
-        }
+  for (const pdfUrl of urlCandidates) {
+    try {
+      const response = await fetchPdfBuffer(pdfUrl);
+      const { buffer, isPdf, contentType } = isPdfBufferResponse(response);
 
-        const driveFileId = extractDriveFileId(material.url);
-        if (driveFileId) {
-          const cookieHeader = (response.headers['set-cookie'] || [])
-            .map((cookie) => cookie.split(';')[0])
-            .join('; ');
-          const html = buffer.toString('utf8');
-          const confirmedDownloadUrl = extractGoogleDriveDownloadUrl(html, driveFileId);
+      if (isPdf) {
+        return sendPdfBuffer(res, buffer);
+      }
 
-          if (confirmedDownloadUrl) {
-            const confirmedResponse = await fetchPdfBuffer(confirmedDownloadUrl, {
-              ...(cookieHeader ? { Cookie: cookieHeader } : {}),
-              Referer: 'https://drive.google.com/',
-            });
-            const confirmedResult = isPdfBufferResponse(confirmedResponse);
+      const driveFileId = extractDriveFileId(material.url);
+      if (driveFileId) {
+        const cookieHeader = (response.headers['set-cookie'] || [])
+          .map((cookie) => cookie.split(';')[0])
+          .join('; ');
+        const html = buffer.toString('utf8');
+        const confirmedDownloadUrl = extractGoogleDriveDownloadUrl(html, driveFileId);
 
-            if (confirmedResult.isPdf) {
-              return sendPdfBuffer(res, confirmedResult.buffer);
-            }
+        if (confirmedDownloadUrl) {
+          const confirmedResponse = await fetchPdfBuffer(confirmedDownloadUrl, {
+            ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+            Referer: 'https://drive.google.com/',
+          });
+          const confirmedResult = isPdfBufferResponse(confirmedResponse);
+
+          if (confirmedResult.isPdf) {
+            return sendPdfBuffer(res, confirmedResult.buffer);
           }
         }
-
-        console.error('Unexpected non-PDF material response:', {
-          url: pdfUrl,
-          materialUrl: material.url,
-          contentType,
-        });
-        lastFailureMessage = 'Unable to load this material as a PDF';
-        brokenMaterialUrl = material.url;
-      } catch (error) {
-        console.error('Error proxying week PDF material:', error.message);
-        lastFailureMessage = 'Unable to load this PDF right now';
-        brokenMaterialUrl = material.url;
       }
+
+      console.error('Unexpected non-PDF material response:', {
+        url: pdfUrl,
+        materialUrl: material.url,
+        contentType,
+      });
+    } catch (error) {
+      console.error('Error proxying week PDF material:', error.message);
     }
   }
 
+  brokenMaterialUrl = material.url;
+  await removeBrokenMaterialByUrl(week, brokenMaterialUrl);
+
   if (brokenMaterialUrl) {
-    await removeBrokenMaterialByUrl(week, brokenMaterialUrl);
+    return next(
+      new AppError(
+        'This uploaded PDF is no longer available. Please upload it again for admin review.',
+        410
+      )
+    );
   }
 
-  const finalStatus =
-    lastFailureMessage ===
-    'This uploaded PDF is no longer available. Please upload it again for admin review.'
-      ? 410
-      : 502;
-
-  return next(new AppError(lastFailureMessage, finalStatus));
+  return next(new AppError(lastFailureMessage, 502));
 });

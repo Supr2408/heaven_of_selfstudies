@@ -6,7 +6,13 @@ import Script from 'next/script';
 import { useRouter } from 'next/navigation';
 import { Chrome, ShieldCheck, Users } from 'lucide-react';
 import { authAPI } from '@/lib/api';
-import { ensureGuestCode, isGuestLikeUser } from '@/lib/user';
+import {
+  clearGuestSessionRequirement,
+  ensureGuestCode,
+  isGoogleSignInRequiredAfterGuest,
+  isGuestLikeUser,
+  markGuestSessionStarted,
+} from '@/lib/user';
 import useStore from '@/store/useStore';
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
@@ -24,9 +30,16 @@ export default function LoginPage() {
   const [scriptLoaded, setScriptLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [googleRequired, setGoogleRequired] = useState(false);
   const googleButtonWidth = typeof window !== 'undefined' && window.innerWidth < 640 ? 260 : 320;
 
   const completeLogin = useCallback((loginResponse) => {
+    if (loginResponse?.user?.authProvider === 'google') {
+      clearGuestSessionRequirement();
+    } else if (isGuestLikeUser(loginResponse?.user)) {
+      markGuestSessionStarted();
+    }
+
     window.localStorage.setItem('token', loginResponse.token);
     initializeAuth({
       user: loginResponse.user,
@@ -74,6 +87,10 @@ export default function LoginPage() {
       width: googleButtonWidth,
     });
   }, [completeLogin, googleButtonWidth]);
+
+  useEffect(() => {
+    setGoogleRequired(isGoogleSignInRequiredAfterGuest());
+  }, []);
 
   useEffect(() => {
     if (authReady && isAuthenticated && !isGuestLikeUser(user)) {
@@ -201,6 +218,12 @@ export default function LoginPage() {
                   </div>
                 )}
 
+                {googleRequired && (
+                  <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    Guest access has ended after 5 minutes. Please continue with Google sign-in.
+                  </div>
+                )}
+
                 {error && (
                   <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                     {error}
@@ -234,34 +257,38 @@ export default function LoginPage() {
                   )}
 
                   <div className="mt-6 border-t border-slate-200 pt-6">
-                    <button
-                      type="button"
-                      onClick={handleGuestLogin}
-                      disabled={loading}
-                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Continue as Guest
-                    </button>
-                    <p className="mt-3 text-center text-xs leading-5 text-slate-500">
-                      Guest access lets you browse courses and materials. Google sign-in is
-                      still required for posting and chat.
-                    </p>
-
-                    {SHOW_DEV_LOGIN && (
+                    {!googleRequired ? (
                       <>
                         <button
                           type="button"
-                          onClick={handleDevLogin}
+                          onClick={handleGuestLogin}
                           disabled={loading}
                           className="mt-4 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          Continue as Demo User
+                          Continue as Guest
                         </button>
                         <p className="mt-3 text-center text-xs leading-5 text-slate-500">
-                          Local development fallback for testing without a Google Client ID.
+                          Guest access lets you browse courses and materials for 5 minutes. Google sign-in is
+                          still required for posting and chat.
                         </p>
+
+                        {SHOW_DEV_LOGIN && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={handleDevLogin}
+                              disabled={loading}
+                              className="mt-4 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Continue as Demo User
+                            </button>
+                            <p className="mt-3 text-center text-xs leading-5 text-slate-500">
+                              Local development fallback for testing without a Google Client ID.
+                            </p>
+                          </>
+                        )}
                       </>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 

@@ -2,6 +2,30 @@ const { verifyToken } = require('../utils/jwt');
 const User = require('../models/User');
 const { AppError } = require('../utils/errorHandler');
 
+const GUEST_SESSION_LIMIT_MS = 5 * 60 * 1000;
+
+const normalizeIssuedAtMs = (issuedAt) => {
+  const numericIssuedAt = Number(issuedAt);
+  if (!Number.isFinite(numericIssuedAt) || numericIssuedAt <= 0) {
+    return 0;
+  }
+
+  return numericIssuedAt < 1e12 ? numericIssuedAt * 1000 : numericIssuedAt;
+};
+
+const isGuestSessionExpired = (user, decodedToken) => {
+  if (!user || !['guest', 'demo'].includes(user.authProvider)) {
+    return false;
+  }
+
+  const issuedAtMs = normalizeIssuedAtMs(decodedToken?.iat);
+  if (!issuedAtMs) {
+    return false;
+  }
+
+  return Date.now() - issuedAtMs >= GUEST_SESSION_LIMIT_MS;
+};
+
 /**
  * Protect routes - ensure user is authenticated
  */
@@ -30,6 +54,12 @@ const protectRoute = async (req, res, next) => {
       return next(new AppError('User not found', 404));
     }
 
+    if (isGuestSessionExpired(user, decoded)) {
+      return next(
+        new AppError('Guest access expired. Please sign in with Google to continue.', 401)
+      );
+    }
+
     req.user = user;
     next();
   } catch (error) {
@@ -53,7 +83,7 @@ const optionalAuth = async (req, res, next) => {
     if (token) {
       const decoded = verifyToken(token);
       const user = await User.findById(decoded.userId);
-      if (user) {
+      if (user && !isGuestSessionExpired(user, decoded)) {
         req.user = user;
         req.userId = decoded.userId;
       }

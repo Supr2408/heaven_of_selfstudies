@@ -3,6 +3,7 @@ const fs = require('fs');
 const YearInstance = require('../models/YearInstance');
 const Week = require('../models/Week');
 const Message = require('../models/Message');
+const Resource = require('../models/Resource');
 const User = require('../models/User');
 const { sanitizeInput } = require('../utils/validation');
 const { AppError, catchAsync } = require('../utils/errorHandler');
@@ -101,6 +102,65 @@ const sendPdfBuffer = (res, buffer) => {
   res.setHeader('Content-Disposition', 'inline; filename="study-material.pdf"');
   res.setHeader('Cache-Control', 'private, max-age=300');
   res.send(buffer);
+};
+
+const BROKEN_UPLOAD_NOTE =
+  'Automatically removed because the uploaded file was missing from server storage.';
+
+const removeBrokenUploadedMaterials = async (week) => {
+  if (!week || !Array.isArray(week.materials) || week.materials.length === 0) {
+    return week;
+  }
+
+  const validMaterials = [];
+  const removedUrls = [];
+
+  for (const material of week.materials) {
+    const materialUrl = String(material?.url || '');
+
+    if (!materialUrl.startsWith('/uploads/')) {
+      validMaterials.push(material);
+      continue;
+    }
+
+    const localFilePath = resolveUploadUrlToPath(materialUrl);
+    if (localFilePath && fs.existsSync(localFilePath)) {
+      validMaterials.push(material);
+      continue;
+    }
+
+    removedUrls.push(materialUrl);
+  }
+
+  if (removedUrls.length === 0) {
+    return week;
+  }
+
+  week.materials = validMaterials;
+  await week.save();
+
+  await Resource.updateMany(
+    {
+      weekId: week._id,
+      url: { $in: removedUrls },
+      branchType: 'week-material',
+      isDeleted: { $ne: true },
+    },
+    {
+      $set: {
+        isDeleted: true,
+        isVerified: false,
+        reviewStatus: 'rejected',
+        reviewerNote: BROKEN_UPLOAD_NOTE,
+        reviewedAt: new Date(),
+      },
+      $addToSet: {
+        tags: 'missing-upload',
+      },
+    }
+  );
+
+  return week;
 };
 
 /**
@@ -262,10 +322,9 @@ exports.getWeeks = catchAsync(async (req, res) => {
   const { yearInstanceId } = req.params;
   const yearInstance = await YearInstance.findById(yearInstanceId).select('totalWeeks');
   const maxVisibleWeek = Math.min(Number(yearInstance?.totalWeeks) || 12, 12);
-
-  const weeks = await Week.find({ yearInstanceId })
-    .sort({ weekNumber: 1 });
-  const visibleWeeks = weeks.filter((week) => (week?.weekNumber || 0) <= maxVisibleWeek);
+  const weeks = await Week.find({ yearInstanceId }).sort({ weekNumber: 1 });
+  const hydratedWeeks = await Promise.all(weeks.map((week) => removeBrokenUploadedMaterials(week)));
+  const visibleWeeks = hydratedWeeks.filter((week) => (week?.weekNumber || 0) <= maxVisibleWeek);
 
   res.status(200).json({
     success: true,
@@ -291,6 +350,8 @@ exports.getWeek = catchAsync(async (req, res, next) => {
   if (!week) {
     return next(new AppError('Week not found', 404));
   }
+
+  await removeBrokenUploadedMaterials(week);
 
   // When a user opens a specific week, also add its year instance
   // to their personal library so "Continue" and stats are
@@ -567,6 +628,8 @@ exports.getWeekMaterials = catchAsync(async (req, res, next) => {
     return next(new AppError('Week not found', 404));
   }
 
+  await removeBrokenUploadedMaterials(week);
+
   // Organize materials by type
   const organizedMaterials = {
     lectureNotes: week.materials.filter((m) => m.type === 'lecture_note'),
@@ -598,9 +661,16 @@ exports.proxyWeekMaterialPdf = catchAsync(async (req, res, next) => {
     return next(new AppError('Week not found', 404));
   }
 
+  await removeBrokenUploadedMaterials(week);
+
   const index = parseInt(materialIndex, 10);
   if (Number.isNaN(index) || index < 0 || index >= week.materials.length) {
-    return next(new AppError('Invalid material index', 400));
+    return next(
+      new AppError(
+        'This uploaded PDF is no longer available. Please upload it again for admin review.',
+        410
+      )
+    );
   }
 
   const material = week.materials[index];
@@ -615,7 +685,13 @@ exports.proxyWeekMaterialPdf = catchAsync(async (req, res, next) => {
     }
 
     if (!fs.existsSync(localFilePath)) {
-      return next(new AppError('Uploaded PDF file not found', 404));
+      await removeBrokenUploadedMaterials(week);
+      return next(
+        new AppError(
+          'This uploaded PDF is no longer available. Please upload it again for admin review.',
+          410
+        )
+      );
     }
 
     res.setHeader('Content-Type', 'application/pdf');

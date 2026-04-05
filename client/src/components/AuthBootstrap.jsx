@@ -2,7 +2,16 @@
 
 import { useEffect, useRef } from 'react';
 import { authAPI } from '@/lib/api';
-import { ensureGuestCode } from '@/lib/user';
+import {
+  clearGuestSessionRequirement,
+  ensureGuestCode,
+  getGuestSessionStartedAt,
+  hasGuestAccessExpired,
+  isGoogleSignInRequiredAfterGuest,
+  isGuestLikeUser,
+  markGuestSessionStarted,
+  requireGoogleAfterGuestSession,
+} from '@/lib/user';
 import useStore from '@/store/useStore';
 
 export default function AuthBootstrap() {
@@ -23,9 +32,15 @@ export default function AuthBootstrap() {
     let cancelled = false;
 
     const ensureGuestSession = async () => {
+      if (isGoogleSignInRequiredAfterGuest()) {
+        setAuthReady(true);
+        return;
+      }
+
       const guestCode = ensureGuestCode();
       const response = await authAPI.guestLogin(guestCode);
       window.localStorage.setItem('token', response.token);
+      markGuestSessionStarted();
 
       if (!cancelled) {
         initializeAuth({
@@ -54,6 +69,21 @@ export default function AuthBootstrap() {
 
         if (cancelled) {
           return;
+        }
+
+        if (isGuestLikeUser(response.user) && hasGuestAccessExpired()) {
+          requireGoogleAfterGuestSession();
+          window.localStorage.removeItem('token');
+          logout();
+          return;
+        }
+
+        if (isGuestLikeUser(response.user)) {
+          if (!isGoogleSignInRequiredAfterGuest()) {
+            markGuestSessionStarted(getGuestSessionStartedAt() || Date.now());
+          }
+        } else {
+          clearGuestSessionRequirement();
         }
 
         initializeAuth({

@@ -276,7 +276,7 @@ function WeekPageContent() {
     weeksByInstance[activeYearInstanceId] || weeks
   );
   const activeBatchMeta = getAvailabilityMeta(activeBatchSummary.status);
-  const pageLoading = loading || (!week && loadingWeeks && Boolean(activeYearInstanceId));
+  const pageLoading = !week && (loading || (loadingWeeks && Boolean(activeYearInstanceId)));
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-24 sm:space-y-8">

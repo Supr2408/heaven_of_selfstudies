@@ -21,7 +21,15 @@ import {
 import Sidebar from './Sidebar';
 import useStore from '@/store/useStore';
 import { authAPI, studyAnalyticsAPI } from '@/lib/api';
-import { getPublicUserName, isGoogleUser, isGuestLikeUser } from '@/lib/user';
+import {
+  clearGuestSessionRequirement,
+  getPublicUserName,
+  getRemainingGuestAccessMs,
+  isGoogleSignInRequiredAfterGuest,
+  isGoogleUser,
+  isGuestLikeUser,
+  requireGoogleAfterGuestSession,
+} from '@/lib/user';
 import { disconnectSocket, initializeSocket } from '@/lib/socket';
 
 const DEFAULT_STUDY_SUMMARY = {
@@ -34,16 +42,25 @@ const DEFAULT_STUDY_SUMMARY = {
 
 const clampPercent = (value) => Math.max(0, Math.min(Number(value) || 0, 100));
 
+const formatGuestTimeRemaining = (remainingMs) => {
+  const totalSeconds = Math.max(Math.ceil((Number(remainingMs) || 0) / 1000), 0);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
 export default function MainLayout({ children }) {
   const router = useRouter();
   const dropdownRef = useRef(null);
   const legalRef = useRef(null);
+  const guestExpiryHandledRef = useRef(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [savingAlias, setSavingAlias] = useState(false);
   const [aliasMessage, setAliasMessage] = useState('');
   const [studySummary, setStudySummary] = useState(DEFAULT_STUDY_SUMMARY);
+  const [guestAccessRemainingMs, setGuestAccessRemainingMs] = useState(0);
   const store = useStore();
   const setSidebarOpen = useStore((state) => state.setSidebarOpen);
   const globalActiveUsers = useStore((state) => state.globalActiveUsers);
@@ -54,6 +71,28 @@ export default function MainLayout({ children }) {
   const aliasLocked = Boolean(store.user?.displayNameLocked);
   const hasCustomAlias = Boolean(store.user?.displayName?.trim());
   const originalGoogleName = store.user?.name?.trim() || 'your original Google name';
+
+  const forceGoogleSignIn = async () => {
+    if (guestExpiryHandledRef.current) {
+      return;
+    }
+
+    guestExpiryHandledRef.current = true;
+    requireGoogleAfterGuestSession();
+
+    try {
+      await authAPI.logout();
+    } catch {
+    } finally {
+      disconnectSocket();
+      clearGuestSessionRequirement();
+      requireGoogleAfterGuestSession();
+      window.localStorage.removeItem('token');
+      store.logout();
+      setMenuOpen(false);
+      router.replace('/login');
+    }
+  };
 
   useEffect(() => {
     if (!menuOpen) {
@@ -80,6 +119,10 @@ export default function MainLayout({ children }) {
       document.removeEventListener('keydown', handleEscape);
     };
   }, [menuOpen]);
+
+  useEffect(() => {
+    guestExpiryHandledRef.current = false;
+  }, [store.user?._id]);
 
   useEffect(() => {
     setDisplayName(store.user?.displayName || '');
@@ -209,6 +252,41 @@ export default function MainLayout({ children }) {
     };
   }, [publicName, setGlobalActiveUsers, store.authReady, store.isAuthenticated, store.user?._id]);
 
+  useEffect(() => {
+    if (!store.authReady || !store.isAuthenticated || !store.user?._id) {
+      setGuestAccessRemainingMs(0);
+      return undefined;
+    }
+
+    if (!isGuestUser) {
+      clearGuestSessionRequirement();
+      setGuestAccessRemainingMs(0);
+      return undefined;
+    }
+
+    const syncGuestAccess = () => {
+      if (isGoogleSignInRequiredAfterGuest()) {
+        setGuestAccessRemainingMs(0);
+        void forceGoogleSignIn();
+        return;
+      }
+
+      const remainingMs = getRemainingGuestAccessMs();
+      setGuestAccessRemainingMs(remainingMs);
+
+      if (remainingMs <= 0) {
+        void forceGoogleSignIn();
+      }
+    };
+
+    syncGuestAccess();
+    const intervalId = window.setInterval(syncGuestAccess, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [isGuestUser, store.authReady, store.isAuthenticated, store.user?._id]);
+
   const handleLogout = async () => {
     setLogoutPending(true);
 
@@ -297,6 +375,26 @@ export default function MainLayout({ children }) {
         }`}
       >
         <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+          {isGuestUser && guestAccessRemainingMs > 0 ? (
+            <div className="border-b border-amber-200 bg-amber-50/95 px-4 py-2 text-xs text-amber-800 sm:px-6 sm:text-sm">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <span>
+                  Guest mode ends in
+                  {' '}
+                  <span className="font-semibold">{formatGuestTimeRemaining(guestAccessRemainingMs)}</span>
+                  . Continue with Google to keep access after that.
+                </span>
+                <Link
+                  href="/login"
+                  className="inline-flex items-center gap-2 font-semibold text-amber-900 underline decoration-amber-400 underline-offset-4"
+                >
+                  Sign in with Google
+                  <ArrowUpRight size={14} />
+                </Link>
+              </div>
+            </div>
+          ) : null}
+
           <div className="relative flex items-center justify-between gap-3 px-4 py-4 sm:px-6">
             <button
               onClick={() => store.toggleSidebar()}

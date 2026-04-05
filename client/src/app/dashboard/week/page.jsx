@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AlertCircle, MessageCircle, X } from 'lucide-react';
+import { AlertCircle, Check, ChevronDown, MessageCircle, X } from 'lucide-react';
 import WeekDetail from '@/components/WeekDetail';
 import WeekDiscussions from '@/components/WeekDiscussions';
 import ChatRoom from '@/components/ChatRoom';
@@ -11,6 +11,7 @@ import { yearInstanceAPI } from '@/lib/api';
 import {
   getAvailabilityMeta,
   hasWeekStudyContent,
+  normalizeVisibleWeeks,
   summarizeWeeksAvailability,
 } from '@/lib/contentAvailability';
 import useStore from '@/store/useStore';
@@ -27,7 +28,7 @@ const sortInstances = (instances = []) =>
   });
 
 const findBestWeek = (weeks = [], preferredWeekNumber) => {
-  const orderedWeeks = [...weeks].sort((a, b) => (a.weekNumber || 0) - (b.weekNumber || 0));
+  const orderedWeeks = normalizeVisibleWeeks(weeks);
 
   if (preferredWeekNumber) {
     const exactWeek = orderedWeeks.find((item) => item.weekNumber === preferredWeekNumber);
@@ -60,12 +61,14 @@ function WeekPageContent() {
 
   const [week, setWeek] = useState(null);
   const [weeks, setWeeks] = useState([]);
+  const [weeksByInstance, setWeeksByInstance] = useState({});
   const [activeYearInstance, setActiveYearInstance] = useState(null);
   const [availableInstances, setAvailableInstances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingWeeks, setLoadingWeeks] = useState(false);
   const [error, setError] = useState('');
   const [chatOpen, setChatOpen] = useState(false);
+  const [batchMenuOpen, setBatchMenuOpen] = useState(false);
 
   const activeYearInstanceId =
     yearInstanceIdFromQuery || week?.yearInstanceId?._id || selectedYear?._id || '';
@@ -130,8 +133,9 @@ function WeekPageContent() {
       try {
         setLoadingWeeks(true);
         const response = await yearInstanceAPI.getWeeks(activeYearInstanceId);
-        const nextWeeks = (response?.data || []).sort((a, b) => (a.weekNumber || 0) - (b.weekNumber || 0));
+        const nextWeeks = normalizeVisibleWeeks(response?.data || []);
         setWeeks(nextWeeks);
+        setWeeksByInstance((prev) => ({ ...prev, [activeYearInstanceId]: nextWeeks }));
 
         if (!weekId) {
           const bestWeek = findBestWeek(nextWeeks);
@@ -157,12 +161,45 @@ function WeekPageContent() {
 
       try {
         const response = await yearInstanceAPI.getYearInstances(courseId);
-        setAvailableInstances(sortInstances(response?.data || []));
+        const instances = sortInstances(response?.data || []);
+        setAvailableInstances(instances);
+
+        const weekEntries = await Promise.all(
+          instances.map(async (instance) => {
+            try {
+              const weeksResponse = await yearInstanceAPI.getWeeks(instance._id);
+              return [instance._id, normalizeVisibleWeeks(weeksResponse?.data || [])];
+            } catch {
+              return [instance._id, []];
+            }
+          })
+        );
+
+        setWeeksByInstance((prev) => ({
+          ...prev,
+          ...Object.fromEntries(weekEntries),
+        }));
       } catch {}
     };
 
     loadInstances();
   }, [courseId]);
+
+  useEffect(() => {
+    if (!week?._id || !weeks.length) {
+      return;
+    }
+
+    const isVisibleWeek = weeks.some((item) => item._id === week._id);
+    if (isVisibleWeek) {
+      return;
+    }
+
+    const fallbackWeek = findBestWeek(weeks, Math.min(Number(week.weekNumber) || 1, 12));
+    if (fallbackWeek?._id) {
+      router.replace(`/dashboard/week?weekId=${fallbackWeek._id}`);
+    }
+  }, [router, week, weeks]);
 
   const openWeek = (nextWeekId) => {
     if (!nextWeekId || nextWeekId === week?._id) return;
@@ -176,7 +213,9 @@ function WeekPageContent() {
     try {
       setError('');
       const response = await yearInstanceAPI.getWeeks(nextInstanceId);
-      const nextWeeks = response?.data || [];
+      const nextWeeks = normalizeVisibleWeeks(response?.data || []);
+      setWeeksByInstance((prev) => ({ ...prev, [nextInstanceId]: nextWeeks }));
+      setBatchMenuOpen(false);
       const targetWeek = findBestWeek(nextWeeks, week?.weekNumber);
 
       if (targetWeek?._id) {
@@ -219,6 +258,16 @@ function WeekPageContent() {
 
   const batchAvailability = useMemo(() => summarizeWeeksAvailability(weeks), [weeks]);
   const batchAvailabilityMeta = getAvailabilityMeta(batchAvailability.status);
+  const displayedInstances = availableInstances.length
+    ? availableInstances
+    : [activeYearInstance].filter(Boolean);
+  const activeBatchLabel = getBatchLabel(
+    activeYearInstance || displayedInstances.find((instance) => instance._id === activeYearInstanceId)
+  );
+  const activeBatchSummary = summarizeWeeksAvailability(
+    weeksByInstance[activeYearInstanceId] || weeks
+  );
+  const activeBatchMeta = getAvailabilityMeta(activeBatchSummary.status);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-24 sm:space-y-8">
@@ -263,17 +312,61 @@ function WeekPageContent() {
 
                   <div className="w-full lg:max-w-xs">
                     <label className="mb-2 block text-sm font-medium text-slate-700">Batch</label>
-                    <select
-                      value={activeYearInstanceId}
-                      onChange={handleBatchChange}
-                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:py-3"
-                    >
-                      {[...(availableInstances.length ? availableInstances : [activeYearInstance].filter(Boolean))].map((instance) => (
-                        <option key={instance._id} value={instance._id}>
-                          {getBatchLabel(instance)}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setBatchMenuOpen((state) => !state)}
+                        className={`flex w-full items-center justify-between rounded-2xl border bg-white px-4 py-3 text-left text-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 ${activeBatchMeta.badgeClass}`}
+                      >
+                        <span className="inline-flex min-w-0 items-center gap-2">
+                          <span className={`h-3 w-3 rounded-full ${activeBatchMeta.dotClass}`} />
+                          <span className="truncate">{activeBatchLabel}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-2">
+                          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${activeBatchMeta.badgeClass}`}>
+                            {activeBatchSummary.availableWeeks}/{activeBatchSummary.totalWeeks || 12}
+                          </span>
+                          <ChevronDown
+                            size={16}
+                            className={`transition-transform ${batchMenuOpen ? 'rotate-180' : ''}`}
+                          />
+                        </span>
+                      </button>
+
+                      {batchMenuOpen ? (
+                        <div className="absolute z-20 mt-2 max-h-80 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                          {displayedInstances.map((instance) => {
+                            const summary = summarizeWeeksAvailability(weeksByInstance[instance._id] || []);
+                            const meta = getAvailabilityMeta(summary.status);
+                            const isSelected = instance._id === activeYearInstanceId;
+
+                            return (
+                              <button
+                                key={instance._id}
+                                type="button"
+                                onClick={() => handleBatchChange({ target: { value: instance._id } })}
+                                className={`mb-1 flex w-full items-center justify-between rounded-xl border px-3 py-3 text-left text-sm transition last:mb-0 ${
+                                  isSelected
+                                    ? `${meta.badgeClass} shadow-sm`
+                                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                                }`}
+                              >
+                                <span className="inline-flex min-w-0 items-center gap-2">
+                                  <span className={`h-3 w-3 rounded-full ${meta.dotClass}`} />
+                                  <span className="truncate">{getBatchLabel(instance)}</span>
+                                </span>
+                                <span className="inline-flex items-center gap-2">
+                                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${meta.badgeClass}`}>
+                                    {summary.availableWeeks}/{summary.totalWeeks || 12}
+                                  </span>
+                                  {isSelected ? <Check size={14} /> : null}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
 

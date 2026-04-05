@@ -11,6 +11,8 @@ export const AVAILABILITY_STATUS = {
   NONE: 'none',
 };
 
+export const MAX_VISIBLE_WEEKS = 12;
+
 export const getSemesterMonths = (semester) => SEMESTER_MONTHS[semester] || ['General'];
 
 export const hasWeekStudyContent = (week = {}) => {
@@ -18,6 +20,11 @@ export const hasWeekStudyContent = (week = {}) => {
   const pdfLinks = Array.isArray(week?.pdfLinks) ? week.pdfLinks : [];
   return materials.length > 0 || pdfLinks.length > 0;
 };
+
+export const normalizeVisibleWeeks = (weeks = []) =>
+  (Array.isArray(weeks) ? weeks : [])
+    .filter((week) => Number(week?.weekNumber || 0) > 0 && Number(week.weekNumber) <= MAX_VISIBLE_WEEKS)
+    .sort((a, b) => (a?.weekNumber || 0) - (b?.weekNumber || 0));
 
 export const getAvailabilityStatus = (availableCount = 0, totalCount = 0) => {
   if (!totalCount || availableCount <= 0) {
@@ -32,8 +39,9 @@ export const getAvailabilityStatus = (availableCount = 0, totalCount = 0) => {
 };
 
 export const summarizeWeeksAvailability = (weeks = []) => {
-  const totalWeeks = Array.isArray(weeks) ? weeks.length : 0;
-  const availableWeeks = (Array.isArray(weeks) ? weeks : []).filter(hasWeekStudyContent).length;
+  const visibleWeeks = normalizeVisibleWeeks(weeks);
+  const totalWeeks = visibleWeeks.length;
+  const availableWeeks = visibleWeeks.filter(hasWeekStudyContent).length;
   const status = getAvailabilityStatus(availableWeeks, totalWeeks);
 
   return {
@@ -46,12 +54,13 @@ export const summarizeWeeksAvailability = (weeks = []) => {
 };
 
 export const groupWeeksByMonth = (weeks = [], semester = '') => {
-  if (!Array.isArray(weeks) || weeks.length === 0) {
+  const visibleWeeks = normalizeVisibleWeeks(weeks);
+  if (visibleWeeks.length === 0) {
     return [];
   }
 
   const months = getSemesterMonths(semester);
-  const sortedWeeks = [...weeks].sort((a, b) => (a?.weekNumber || 0) - (b?.weekNumber || 0));
+  const sortedWeeks = visibleWeeks;
   const weeksPerMonth = Math.max(1, Math.ceil(sortedWeeks.length / months.length));
 
   return months

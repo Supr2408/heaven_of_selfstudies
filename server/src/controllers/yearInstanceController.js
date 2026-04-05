@@ -1,6 +1,5 @@
 const axios = require('axios');
 const fs = require('fs');
-const path = require('path');
 const YearInstance = require('../models/YearInstance');
 const Week = require('../models/Week');
 const Message = require('../models/Message');
@@ -11,6 +10,7 @@ const {
   scrapeNPTELAnnouncements,
   convertDriveLink,
 } = require('../utils/nptelScraper');
+const { resolveUploadUrlToPath } = require('../utils/uploadStorage');
 
 const DRIVE_FILE_PATTERNS = [
   /\/file\/d\/([a-zA-Z0-9-_]+)/,
@@ -609,11 +609,8 @@ exports.proxyWeekMaterialPdf = catchAsync(async (req, res, next) => {
   }
 
   if (material.url.startsWith('/uploads/')) {
-    const uploadsRoot = path.resolve(__dirname, '../../uploads');
-    const relativeUploadPath = material.url.replace(/^\/+/, '');
-    const localFilePath = path.resolve(__dirname, '../../', relativeUploadPath);
-
-    if (!localFilePath.startsWith(uploadsRoot)) {
+    const localFilePath = resolveUploadUrlToPath(material.url);
+    if (!localFilePath) {
       return next(new AppError('Invalid uploaded PDF path', 400));
     }
 

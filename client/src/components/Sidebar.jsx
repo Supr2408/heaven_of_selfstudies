@@ -10,6 +10,7 @@ import {
   getSemesterMonths,
   groupWeeksByMonth,
   hasWeekStudyContent,
+  normalizeVisibleWeeks,
   summarizeWeeksAvailability,
 } from '@/lib/contentAvailability';
 import { isAdminUser } from '@/lib/user';
@@ -107,7 +108,7 @@ export default function Sidebar() {
     }
 
     const response = await yearInstanceAPI.getWeeks(instanceId);
-    const data = (response.data || []).sort((a, b) => (a.weekNumber || 0) - (b.weekNumber || 0));
+    const data = normalizeVisibleWeeks(response.data || []);
     setWeeksByInstance((prev) => ({ ...prev, [instanceId]: data }));
     return data;
   };

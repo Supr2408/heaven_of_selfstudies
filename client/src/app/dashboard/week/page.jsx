@@ -79,6 +79,7 @@ function WeekPageContent() {
     const loadWeek = async () => {
       if (!weekId) {
         setWeek(null);
+        setLoading(false);
         return;
       }
 
@@ -127,6 +128,7 @@ function WeekPageContent() {
     const loadWeeks = async () => {
       if (!activeYearInstanceId) {
         setWeeks([]);
+        setLoading(false);
         return;
       }
 
@@ -141,9 +143,15 @@ function WeekPageContent() {
           const bestWeek = findBestWeek(nextWeeks);
           if (bestWeek?._id) {
             router.replace(`/dashboard/week?weekId=${bestWeek._id}`);
+            return;
           }
+
+          setLoading(false);
         }
       } catch {
+        if (!weekId) {
+          setLoading(false);
+        }
       } finally {
         setLoadingWeeks(false);
       }
@@ -268,6 +276,7 @@ function WeekPageContent() {
     weeksByInstance[activeYearInstanceId] || weeks
   );
   const activeBatchMeta = getAvailabilityMeta(activeBatchSummary.status);
+  const pageLoading = loading || (!week && loadingWeeks && Boolean(activeYearInstanceId));
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-24 sm:space-y-8">
@@ -289,7 +298,7 @@ function WeekPageContent() {
         </div>
       ) : null}
 
-      {loading ? (
+      {pageLoading ? (
         <div className="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-slate-600 shadow-sm">
           Loading week content...
         </div>

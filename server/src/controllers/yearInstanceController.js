@@ -46,12 +46,41 @@ const isPdfBufferResponse = (response) => {
   const header = buffer.subarray(0, 5).toString();
   const firstChunk = buffer.subarray(0, Math.min(buffer.length, 2048)).toString('latin1');
   const contentType = String(response?.headers?.['content-type'] || '').toLowerCase();
+  const contentDisposition = String(response?.headers?.['content-disposition'] || '').toLowerCase();
 
   return {
     buffer,
-    isPdf: contentType.includes('pdf') || header === '%PDF-' || firstChunk.includes('%PDF-'),
+    isPdf:
+      contentType.includes('pdf') ||
+      contentDisposition.includes('.pdf') ||
+      header === '%PDF-' ||
+      firstChunk.includes('%PDF-'),
     contentType,
   };
+};
+
+const buildMaterialPdfUrlCandidates = (rawUrl = '') => {
+  const normalizedUrl = String(rawUrl || '').trim();
+  if (!normalizedUrl) return [];
+
+  const primary = resolveMaterialPdfUrl(normalizedUrl);
+  const candidates = [primary];
+  const isCloudinaryUrl = /https?:\/\/res\.cloudinary\.com\//i.test(primary);
+
+  if (isCloudinaryUrl) {
+    const withoutQuery = primary.split('?')[0];
+    const hasPdfExtension = /\.pdf$/i.test(withoutQuery);
+    if (!hasPdfExtension) {
+      const query = primary.includes('?') ? `?${primary.split('?').slice(1).join('?')}` : '';
+      candidates.push(`${withoutQuery}.pdf${query}`);
+    }
+
+    if (primary.includes('/raw/upload/')) {
+      candidates.push(primary.replace('/raw/upload/', '/raw/upload/fl_attachment/'));
+    }
+  }
+
+  return [...new Set(candidates.filter(Boolean))];
 };
 
 const decodeEscapedUrl = (value = '') =>
@@ -714,46 +743,48 @@ exports.proxyWeekMaterialPdf = catchAsync(async (req, res, next) => {
       return res.sendFile(localFilePath);
     }
 
-    const pdfUrl = resolveMaterialPdfUrl(material.url);
+    const urlCandidates = buildMaterialPdfUrlCandidates(material.url);
 
-    try {
-      const response = await fetchPdfBuffer(pdfUrl);
-      const { buffer, isPdf, contentType } = isPdfBufferResponse(response);
+    for (const pdfUrl of urlCandidates) {
+      try {
+        const response = await fetchPdfBuffer(pdfUrl);
+        const { buffer, isPdf, contentType } = isPdfBufferResponse(response);
 
-      if (isPdf) {
-        return sendPdfBuffer(res, buffer);
-      }
+        if (isPdf) {
+          return sendPdfBuffer(res, buffer);
+        }
 
-      const driveFileId = extractDriveFileId(material.url);
-      if (driveFileId) {
-        const cookieHeader = (response.headers['set-cookie'] || [])
-          .map((cookie) => cookie.split(';')[0])
-          .join('; ');
-        const html = buffer.toString('utf8');
-        const confirmedDownloadUrl = extractGoogleDriveDownloadUrl(html, driveFileId);
+        const driveFileId = extractDriveFileId(material.url);
+        if (driveFileId) {
+          const cookieHeader = (response.headers['set-cookie'] || [])
+            .map((cookie) => cookie.split(';')[0])
+            .join('; ');
+          const html = buffer.toString('utf8');
+          const confirmedDownloadUrl = extractGoogleDriveDownloadUrl(html, driveFileId);
 
-        if (confirmedDownloadUrl) {
-          const confirmedResponse = await fetchPdfBuffer(confirmedDownloadUrl, {
-            ...(cookieHeader ? { Cookie: cookieHeader } : {}),
-            Referer: 'https://drive.google.com/',
-          });
-          const confirmedResult = isPdfBufferResponse(confirmedResponse);
+          if (confirmedDownloadUrl) {
+            const confirmedResponse = await fetchPdfBuffer(confirmedDownloadUrl, {
+              ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+              Referer: 'https://drive.google.com/',
+            });
+            const confirmedResult = isPdfBufferResponse(confirmedResponse);
 
-          if (confirmedResult.isPdf) {
-            return sendPdfBuffer(res, confirmedResult.buffer);
+            if (confirmedResult.isPdf) {
+              return sendPdfBuffer(res, confirmedResult.buffer);
+            }
           }
         }
-      }
 
-      console.error('Unexpected non-PDF material response:', {
-        url: pdfUrl,
-        materialUrl: material.url,
-        contentType,
-      });
-      lastFailureMessage = 'Unable to load this material as a PDF';
-    } catch (error) {
-      console.error('Error proxying week PDF material:', error.message);
-      lastFailureMessage = 'Unable to load this PDF right now';
+        console.error('Unexpected non-PDF material response:', {
+          url: pdfUrl,
+          materialUrl: material.url,
+          contentType,
+        });
+        lastFailureMessage = 'Unable to load this material as a PDF';
+      } catch (error) {
+        console.error('Error proxying week PDF material:', error.message);
+        lastFailureMessage = 'Unable to load this PDF right now';
+      }
     }
   }
 

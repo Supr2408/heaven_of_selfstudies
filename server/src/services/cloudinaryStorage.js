@@ -24,13 +24,14 @@ const ensureCloudinaryConfig = () => {
 
 const buildSafePublicId = (originalFileName = '') => {
   const extension = path.extname(String(originalFileName || '')).toLowerCase() || '.pdf';
+  const safeExtension = /\.[a-z0-9]+$/i.test(extension) ? extension : '.pdf';
   const baseName = path
-    .basename(String(originalFileName || ''), extension)
+    .basename(String(originalFileName || ''), safeExtension)
     .replace(/[^a-zA-Z0-9-_]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80) || 'community-upload';
 
-  return `${Date.now()}-${baseName}`;
+  return `${Date.now()}-${baseName}${safeExtension}`;
 };
 
 const uploadPdfToCloudinary = async ({ localFilePath, originalFileName = '', folder = '' }) => {

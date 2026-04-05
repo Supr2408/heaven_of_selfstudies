@@ -23,7 +23,7 @@ export default function WeekDetail({ week, yearInstance, navigationSlot = null }
   }));
   const canUploadMissingMaterial = isGoogleUser(user);
   const isGuestMode = isGuestLikeUser(user);
-  const firstPdfIndex = (week?.materials || []).findIndex(
+  const firstPdfIndex = (week?.materials || []).findLastIndex(
     (material) => (material?.fileType || '').toLowerCase() === 'pdf'
   );
   const firstPdf = firstPdfIndex >= 0 ? week.materials[firstPdfIndex] : null;

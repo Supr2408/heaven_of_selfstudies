@@ -22,7 +22,6 @@ const {
   getTrendingResources,
 } = require('../controllers/resourceController');
 const { protectRoute, requireGoogleUser, authorize } = require('../middleware/auth');
-const { uploadLimiter, apiLimiter } = require('../middleware/advancedRateLimiter');
 const { uploadCommunityPdf } = require('../middleware/upload');
 
 const router = express.Router();
@@ -46,8 +45,8 @@ router.post('/internal/review-queue/:id/approve', approveInternalResourceSubmiss
 router.post('/internal/review-queue/:id/reject', rejectInternalResourceSubmission);
 
 // Protected Routes
-router.post('/resources', protectRoute, requireGoogleUser, uploadLimiter, createResource);
-router.post('/resources/upload', protectRoute, requireGoogleUser, uploadLimiter, uploadCommunityPdf, createUploadedResource);
+router.post('/resources', protectRoute, requireGoogleUser, createResource);
+router.post('/resources/upload', protectRoute, requireGoogleUser, uploadCommunityPdf, createUploadedResource);
 router.put('/resources/:id', protectRoute, updateResource);
 router.delete('/resources/:id', protectRoute, deleteResource);
 

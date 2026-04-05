@@ -10,7 +10,6 @@ import StudyTimeTracker from '@/components/StudyTimeTracker';
 import { yearInstanceAPI } from '@/lib/api';
 import {
   getAvailabilityMeta,
-  groupWeeksByMonth,
   hasWeekStudyContent,
   summarizeWeeksAvailability,
 } from '@/lib/contentAvailability';
@@ -221,11 +220,6 @@ function WeekPageContent() {
   const batchAvailability = useMemo(() => summarizeWeeksAvailability(weeks), [weeks]);
   const batchAvailabilityMeta = getAvailabilityMeta(batchAvailability.status);
 
-  const monthAvailability = useMemo(
-    () => groupWeeksByMonth(weeks, activeYearInstance?.semester || week?.yearInstanceId?.semester || ''),
-    [activeYearInstance?.semester, week?.yearInstanceId?.semester, weeks]
-  );
-
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-24 sm:space-y-8">
       {week && trackedCourseId && trackedCourseTitle ? (
@@ -291,45 +285,16 @@ function WeekPageContent() {
                           Material availability for this batch
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
-                          Green means the grouped weeks have full material coverage, yellow means partial coverage, and red means content is still missing.
+                          Green means content exists for all weeks in this batch, yellow means some weeks still miss content, and red means the batch is still empty.
                         </p>
                       </div>
                       <div
                         className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${batchAvailabilityMeta.badgeClass}`}
                       >
-                        <span className={`h-2.5 w-2.5 rounded-full ${batchAvailabilityMeta.dotClass}`} />
+                        <span className={`h-3 w-3 rounded-full ${batchAvailabilityMeta.dotClass}`} />
                         {batchAvailability.availableWeeks}/{batchAvailability.totalWeeks} weeks ready
                       </div>
                     </div>
-
-                    {monthAvailability.length ? (
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                        {monthAvailability.map((bucket) => {
-                          const bucketMeta = getAvailabilityMeta(bucket.status);
-                          return (
-                            <div
-                              key={bucket.month}
-                              className={`rounded-2xl border px-4 py-3 ${bucketMeta.panelClass}`}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                                  <span className={`h-2.5 w-2.5 rounded-full ${bucketMeta.dotClass}`} />
-                                  {bucket.month}
-                                </span>
-                                <span
-                                  className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${bucketMeta.badgeClass}`}
-                                >
-                                  {bucketMeta.label}
-                                </span>
-                              </div>
-                              <p className="mt-2 text-xs text-slate-600">
-                                {bucket.availableWeeks} of {bucket.totalWeeks} weeks have materials.
-                              </p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : null}
                   </div>
 
                   <div className="flex min-w-max gap-2 sm:gap-3">

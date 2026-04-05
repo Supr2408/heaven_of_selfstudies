@@ -329,7 +329,7 @@ export default function Sidebar() {
                 const meta = getAvailabilityMeta(status);
                 return (
                   <span key={status} className="inline-flex items-center gap-1.5">
-                    <span className={`h-2.5 w-2.5 rounded-full ${meta.dotClass}`} />
+                    <span className={`h-3 w-3 rounded-full ${meta.dotClass}`} />
                     {meta.label}
                   </span>
                 );
@@ -428,7 +428,7 @@ export default function Sidebar() {
                                         }`}
                                       >
                                         <span className="inline-flex min-w-0 items-center gap-2">
-                                          <span className={`h-2.5 w-2.5 rounded-full ${runMeta.dotClass}`} />
+                                          <span className={`h-3 w-3 rounded-full ${runMeta.dotClass}`} />
                                           <span className="truncate">
                                             {instance.year} - {instance.semester}
                                           </span>
@@ -471,7 +471,7 @@ export default function Sidebar() {
                                                     className="flex w-full items-center justify-between rounded px-3 py-1 text-[11px] uppercase tracking-wide text-slate-300 hover:bg-slate-800"
                                                   >
                                                     <span className="inline-flex items-center gap-2">
-                                                      <span className={`h-2 w-2 rounded-full ${bucketMeta.dotClass}`} />
+                                                      <span className={`h-2.5 w-2.5 rounded-full ${bucketMeta.dotClass}`} />
                                                       <span>{bucket.month}</span>
                                                     </span>
                                                     <span className="inline-flex items-center gap-2">

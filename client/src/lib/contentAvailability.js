@@ -74,7 +74,7 @@ export const getAvailabilityMeta = (status = AVAILABILITY_STATUS.NONE) => {
   if (status === AVAILABILITY_STATUS.FULL) {
     return {
       label: 'Full',
-      dotClass: 'bg-emerald-500',
+      dotClass: 'bg-emerald-500 ring-2 ring-emerald-200/30',
       badgeClass: 'border-emerald-200 bg-emerald-50 text-emerald-700',
       panelClass: 'border-emerald-200 bg-emerald-50/80',
     };
@@ -83,15 +83,15 @@ export const getAvailabilityMeta = (status = AVAILABILITY_STATUS.NONE) => {
   if (status === AVAILABILITY_STATUS.PARTIAL) {
     return {
       label: 'Partial',
-      dotClass: 'bg-amber-400',
-      badgeClass: 'border-amber-200 bg-amber-50 text-amber-700',
-      panelClass: 'border-amber-200 bg-amber-50/80',
+      dotClass: 'bg-yellow-300 ring-2 ring-yellow-200/50',
+      badgeClass: 'border-yellow-300 bg-yellow-50 text-yellow-800',
+      panelClass: 'border-yellow-300 bg-yellow-50/90',
     };
   }
 
   return {
     label: 'Missing',
-    dotClass: 'bg-rose-500',
+    dotClass: 'bg-rose-500 ring-2 ring-rose-200/30',
     badgeClass: 'border-rose-200 bg-rose-50 text-rose-700',
     panelClass: 'border-rose-200 bg-rose-50/80',
   };

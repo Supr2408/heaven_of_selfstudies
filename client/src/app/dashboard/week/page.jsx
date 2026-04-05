@@ -71,7 +71,10 @@ function WeekPageContent() {
   const [batchMenuOpen, setBatchMenuOpen] = useState(false);
 
   const activeYearInstanceId =
-    yearInstanceIdFromQuery || week?.yearInstanceId?._id || selectedYear?._id || '';
+    week?.yearInstanceId?._id ||
+    yearInstanceIdFromQuery ||
+    (weekId ? '' : selectedYear?._id) ||
+    '';
 
   const courseId = getCourseId(week?.yearInstanceId || activeYearInstance);
 
@@ -198,6 +201,11 @@ function WeekPageContent() {
       return;
     }
 
+    const weekYearInstanceId = week?.yearInstanceId?._id || '';
+    if (!weekYearInstanceId || weekYearInstanceId !== activeYearInstanceId) {
+      return;
+    }
+
     const isVisibleWeek = weeks.some((item) => item._id === week._id);
     if (isVisibleWeek) {
       return;
@@ -207,7 +215,7 @@ function WeekPageContent() {
     if (fallbackWeek?._id) {
       router.replace(`/dashboard/week?weekId=${fallbackWeek._id}`);
     }
-  }, [router, week, weeks]);
+  }, [activeYearInstanceId, router, week, weeks]);
 
   const openWeek = (nextWeekId) => {
     if (!nextWeekId || nextWeekId === week?._id) return;

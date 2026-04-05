@@ -5,6 +5,10 @@ const Week = require('../models/Week');
 const Course = require('../models/Course');
 const { sanitizeInput } = require('../utils/validation');
 const { resolveUploadUrlToPath } = require('../utils/uploadStorage');
+const {
+  uploadPdfToCloudinary,
+  isCloudinaryPdfStorageEnabled,
+} = require('../services/cloudinaryStorage');
 const { AppError, catchAsync } = require('../utils/errorHandler');
 
 const RESOURCE_TYPES = ['note', 'link', 'solution', 'discussion', 'resource'];
@@ -248,6 +252,10 @@ const loadReviewQueueResources = async (status = REVIEW_STATUS.PENDING) => {
 };
 
 const streamReviewSubmissionFile = async (resource, res, next) => {
+  if (/^https?:\/\//i.test(String(resource?.url || ''))) {
+    return res.redirect(resource.url);
+  }
+
   if (!resource?.url || !resource.url.startsWith('/uploads/')) {
     return next(new AppError('This submission does not have a local uploaded file.', 404));
   }
@@ -452,11 +460,34 @@ exports.createUploadedResource = catchAsync(async (req, res, next) => {
 
   const isCourseUpload = Boolean(courseId && !weekId);
   const normalizedType = UPLOAD_TYPES.includes(type) ? type : 'solution';
-  const relativeUrl = `/uploads/community/${req.file.filename}`;
   const detectedFileType = req.file.detectedFileType || 'other';
   const resolvedBranchType = isCourseUpload
     ? BRANCH_TYPES.COURSE_DISCUSSION
     : BRANCH_TYPES.WEEK_MATERIAL;
+  let storedUrl = `/uploads/community/${req.file.filename}`;
+  let storedFileSize = req.file.size;
+
+  if (detectedFileType === 'pdf') {
+    if (!isCloudinaryPdfStorageEnabled()) {
+      await cleanupUploadedFile();
+      return next(
+        new AppError(
+          'Cloudinary PDF storage is not configured. Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.',
+          500
+        )
+      );
+    }
+
+    const uploadResult = await uploadPdfToCloudinary({
+      localFilePath: req.file.path,
+      originalFileName: req.file.originalname,
+      folder: 'nptel-hub/community-pdf',
+    });
+
+    storedUrl = uploadResult.secureUrl;
+    storedFileSize = uploadResult.bytes || req.file.size;
+    await cleanupUploadedFile();
+  }
 
   try {
     await ensureBranchTargetExists({
@@ -479,9 +510,9 @@ exports.createUploadedResource = catchAsync(async (req, res, next) => {
       type: normalizedType,
       branchType: resolvedBranchType,
       reviewStatus: REVIEW_STATUS.PENDING,
-      url: relativeUrl,
+      url: storedUrl,
       fileType: detectedFileType,
-      fileSize: req.file.size,
+      fileSize: storedFileSize,
       isVerified: false,
       tags,
     });

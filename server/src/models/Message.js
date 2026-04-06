@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const CHAT_RETENTION_SECONDS = 30 * 60;
 
 const messageSchema = new mongoose.Schema(
   {
@@ -61,5 +62,6 @@ const messageSchema = new mongoose.Schema(
 // Index for room-based chat retrieval
 messageSchema.index({ weekId: 1, timestamp: -1 });
 messageSchema.index({ userId: 1 });
+messageSchema.index({ timestamp: 1 }, { expireAfterSeconds: CHAT_RETENTION_SECONDS });
 
 module.exports = mongoose.model('Message', messageSchema);

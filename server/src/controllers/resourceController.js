@@ -24,6 +24,10 @@ const REVIEW_STATUS = {
   REJECTED: 'rejected',
 };
 const INTERNAL_ANALYTICS_HEADER = 'x-analytics-shared-secret';
+const DEFAULT_RESOURCE_PAGE_SIZE = 10;
+const MAX_RESOURCE_PAGE_SIZE = 25;
+const DEFAULT_TRENDING_RESOURCE_LIMIT = 5;
+const MAX_TRENDING_RESOURCE_LIMIT = 10;
 
 const sanitizeTags = (tags = []) =>
   Array.isArray(tags)
@@ -37,6 +41,15 @@ const normalizeResourceType = (type, fallback = 'discussion') =>
 
 const sanitizeText = (value = '', maxLength = 200) =>
   String(value || '').trim().slice(0, maxLength);
+
+const normalizePositiveInt = (value, fallback, max) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+
+  return Math.min(parsed, max);
+};
 
 const getInlineFileContentType = (resource, filePath = '') => {
   const normalizedFileType = String(resource?.fileType || '').toLowerCase();
@@ -248,7 +261,8 @@ const loadReviewQueueResources = async (status = REVIEW_STATUS.PENDING) => {
       },
     })
     .populate('reviewedBy', 'name displayName email')
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .lean();
 };
 
 const streamReviewSubmissionFile = async (resource, res, next) => {
@@ -283,14 +297,20 @@ const streamReviewSubmissionFile = async (resource, res, next) => {
  */
 exports.getResources = catchAsync(async (req, res) => {
   const { weekId } = req.params;
-  const { page = 1, limit = 10, type, sortBy = 'createdAt' } = req.query;
+  const { page = 1, limit = DEFAULT_RESOURCE_PAGE_SIZE, type, sortBy = 'createdAt' } = req.query;
 
   const filter = buildWeekDiscussionFilter({ weekId, type });
-  const skip = (Number(page) - 1) * Number(limit);
+  const normalizedPage = Math.max(Number.parseInt(page, 10) || 1, 1);
+  const normalizedLimit = normalizePositiveInt(
+    limit,
+    DEFAULT_RESOURCE_PAGE_SIZE,
+    MAX_RESOURCE_PAGE_SIZE
+  );
+  const skip = (normalizedPage - 1) * normalizedLimit;
   const sortField = sortBy === 'createdAt' ? 'createdAt' : 'createdAt';
 
   const resources = await populateResourceUsers(
-    Resource.find(filter).sort({ [sortField]: -1 }).skip(skip).limit(Number(limit))
+    Resource.find(filter).sort({ [sortField]: -1 }).skip(skip).limit(normalizedLimit).lean()
   );
   const total = await Resource.countDocuments(filter);
 
@@ -298,8 +318,8 @@ exports.getResources = catchAsync(async (req, res) => {
     success: true,
     count: resources.length,
     total,
-    pages: Math.ceil(total / Number(limit)),
-    currentPage: Number(page),
+    pages: Math.ceil(total / normalizedLimit),
+    currentPage: normalizedPage,
     data: resources,
   });
 });
@@ -309,7 +329,7 @@ exports.getResources = catchAsync(async (req, res) => {
  */
 exports.getCourseResources = catchAsync(async (req, res) => {
   const { courseId } = req.params;
-  const { page = 1, limit = 10, type, sortBy = 'createdAt' } = req.query;
+  const { page = 1, limit = DEFAULT_RESOURCE_PAGE_SIZE, type, sortBy = 'createdAt' } = req.query;
 
   const filter = {
     courseId,
@@ -322,11 +342,17 @@ exports.getCourseResources = catchAsync(async (req, res) => {
     filter.type = type;
   }
 
-  const skip = (Number(page) - 1) * Number(limit);
+  const normalizedPage = Math.max(Number.parseInt(page, 10) || 1, 1);
+  const normalizedLimit = normalizePositiveInt(
+    limit,
+    DEFAULT_RESOURCE_PAGE_SIZE,
+    MAX_RESOURCE_PAGE_SIZE
+  );
+  const skip = (normalizedPage - 1) * normalizedLimit;
   const sortField = sortBy === 'createdAt' ? 'createdAt' : 'createdAt';
 
   const resources = await populateResourceUsers(
-    Resource.find(filter).sort({ [sortField]: -1 }).skip(skip).limit(Number(limit))
+    Resource.find(filter).sort({ [sortField]: -1 }).skip(skip).limit(normalizedLimit).lean()
   );
   const total = await Resource.countDocuments(filter);
 
@@ -334,8 +360,8 @@ exports.getCourseResources = catchAsync(async (req, res) => {
     success: true,
     count: resources.length,
     total,
-    pages: Math.ceil(total / Number(limit)),
-    currentPage: Number(page),
+    pages: Math.ceil(total / normalizedLimit),
+    currentPage: normalizedPage,
     data: resources,
   });
 });
@@ -630,7 +656,7 @@ exports.rejectResourceSubmission = catchAsync(async (req, res, next) => {
 });
 
 exports.getReviewSubmissionFile = catchAsync(async (req, res, next) => {
-  const resource = await Resource.findById(req.params.id);
+  const resource = await Resource.findById(req.params.id).select('url fileType title').lean();
   if (!resource) {
     return next(new AppError('Submission not found', 404));
   }
@@ -658,7 +684,7 @@ exports.getInternalReviewSubmissionFile = catchAsync(async (req, res, next) => {
     return;
   }
 
-  const resource = await Resource.findById(req.params.id);
+  const resource = await Resource.findById(req.params.id).select('url fileType title').lean();
   if (!resource) {
     return next(new AppError('Submission not found', 404));
   }
@@ -919,12 +945,17 @@ exports.addComment = catchAsync(async (req, res, next) => {
  */
 exports.getTrendingResources = catchAsync(async (req, res) => {
   const { weekId } = req.params;
-  const limit = Number(req.query.limit) || 5;
+  const limit = normalizePositiveInt(
+    req.query.limit,
+    DEFAULT_TRENDING_RESOURCE_LIMIT,
+    MAX_TRENDING_RESOURCE_LIMIT
+  );
 
   const resources = await populateResourceUsers(
     Resource.find(buildWeekDiscussionFilter({ weekId }))
       .sort({ upvotes: -1, views: -1 })
       .limit(limit)
+      .lean()
   );
 
   res.status(200).json({

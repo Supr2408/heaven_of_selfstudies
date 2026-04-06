@@ -86,7 +86,7 @@ const getAssignments = async (req, res) => {
   try {
     const { courseCode } = req.params;
 
-    const assignment = await Assignment.findOne({ courseCode });
+    const assignment = await Assignment.findOne({ courseCode }).lean();
 
     if (!assignment) {
       return res.status(404).json({
@@ -122,7 +122,8 @@ const getAllAssignments = async (req, res) => {
   try {
     const assignments = await Assignment.find()
       .sort({ createdAt: -1 })
-      .select('courseCode courseName semester year totalSolutions lastUpdated');
+      .select('courseCode courseName semester year solutions lastUpdated')
+      .lean();
 
     res.json({
       success: true,
@@ -156,7 +157,7 @@ const getSolution = async (req, res) => {
     const assignment = await Assignment.findOne({
       courseCode,
       'solutions.weekNumber': parseInt(weekNumber),
-    });
+    }).lean();
 
     if (!assignment) {
       return res.status(404).json({
@@ -175,7 +176,7 @@ const getSolution = async (req, res) => {
       courseCode: assignment.courseCode,
       courseName: assignment.courseName,
       solution: {
-        ...solution.toObject(),
+        ...solution,
         embedLink: `https://drive.google.com/file/d/${solution.driveFileId}/preview`,
       },
     });

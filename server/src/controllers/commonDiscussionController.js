@@ -7,7 +7,8 @@ exports.getPosts = catchAsync(async (req, res) => {
     .sort({ createdAt: -1 })
     .limit(100)
     .populate('userId', 'name displayName avatar')
-    .populate('replies.userId', 'name displayName avatar');
+    .populate('replies.userId', 'name displayName avatar')
+    .lean();
 
   res.status(200).json({
     success: true,

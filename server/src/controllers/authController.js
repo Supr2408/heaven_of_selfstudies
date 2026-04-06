@@ -219,14 +219,14 @@ exports.logout = (req, res) => {
  * Get current user
  */
 exports.getCurrentUser = catchAsync(async (req, res, next) => {
-  const user = await User.findById(req.userId);
+  const user = await User.findById(req.userId).lean();
   if (!user) {
     return next(new AppError('User not found', 404));
   }
 
   res.status(200).json({
     success: true,
-    user: user.toJSON(),
+    user,
   });
 });
 

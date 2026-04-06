@@ -1,0 +1,26 @@
+{
+  "name": "nptel-private-analytics-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Private analytics collector and admin API for NPTEL Hub",
+  "main": "server.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.0",
+    "mongoose": "^7.0.3",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  },
+  "engines": {
+    "node": ">=20.18.1",
+    "npm": ">=10.0.0"
+  }
+}

@@ -41,21 +41,20 @@ const defaultPdfRequestHeaders = {
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
 };
 
-const isPdfBufferResponse = (response) => {
-  const buffer = Buffer.from(response?.data || '');
-  const header = buffer.subarray(0, 5).toString();
-  const firstChunk = buffer.subarray(0, Math.min(buffer.length, 2048)).toString('latin1');
+const getRemoteContentHeaders = (response, fallbackUrl = '') => {
   const contentType = String(response?.headers?.['content-type'] || '').toLowerCase();
   const contentDisposition = String(response?.headers?.['content-disposition'] || '').toLowerCase();
+  const resolvedUrl = String(
+    response?.request?.res?.responseUrl || response?.config?.url || fallbackUrl || ''
+  );
 
   return {
-    buffer,
+    contentType,
+    contentDisposition,
     isPdf:
       contentType.includes('pdf') ||
       contentDisposition.includes('.pdf') ||
-      header === '%PDF-' ||
-      firstChunk.includes('%PDF-'),
-    contentType,
+      /\.pdf(?:[?#]|$)/i.test(resolvedUrl),
   };
 };
 
@@ -116,9 +115,9 @@ const extractGoogleDriveDownloadUrl = (html = '', fileId = '') => {
   return '';
 };
 
-const fetchPdfBuffer = async (url, extraHeaders = {}) =>
+const fetchPdfStream = async (url, extraHeaders = {}) =>
   axios.get(url, {
-    responseType: 'arraybuffer',
+    responseType: 'stream',
     timeout: 20000,
     maxRedirects: 5,
     headers: {
@@ -127,11 +126,43 @@ const fetchPdfBuffer = async (url, extraHeaders = {}) =>
     },
   });
 
-const sendPdfBuffer = (res, buffer) => {
-  res.setHeader('Content-Type', 'application/pdf');
+const fetchRemoteText = async (url, extraHeaders = {}) =>
+  axios.get(url, {
+    responseType: 'text',
+    responseEncoding: 'utf8',
+    timeout: 20000,
+    maxRedirects: 5,
+    headers: {
+      ...defaultPdfRequestHeaders,
+      ...extraHeaders,
+    },
+  });
+
+const streamPdfResponse = (res, response) => {
+  const upstreamContentType = response?.headers?.['content-type'];
+  const upstreamContentLength = response?.headers?.['content-length'];
+
+  res.setHeader('Content-Type', upstreamContentType || 'application/pdf');
   res.setHeader('Content-Disposition', 'inline; filename="study-material.pdf"');
   res.setHeader('Cache-Control', 'private, max-age=300');
-  res.send(buffer);
+
+  if (upstreamContentLength) {
+    res.setHeader('Content-Length', upstreamContentLength);
+  }
+
+  const upstreamStream = response.data;
+  upstreamStream.on('error', (error) => {
+    console.error('Error streaming week PDF material:', error.message);
+    res.destroy(error);
+  });
+
+  res.on('close', () => {
+    if (!res.writableEnded) {
+      upstreamStream.destroy();
+    }
+  });
+
+  upstreamStream.pipe(res);
 };
 
 const BROKEN_UPLOAD_NOTE =
@@ -261,7 +292,8 @@ exports.getAllYearInstances = catchAsync(async (req, res) => {
 
   const instances = await YearInstance.find(filter)
     .populate('courseId')
-    .sort({ year: -1, semester: -1 });
+    .sort({ year: -1, semester: -1 })
+    .lean();
 
   res.status(200).json({
     success: true,
@@ -282,7 +314,8 @@ exports.getYearInstances = catchAsync(async (req, res, next) => {
 
   const instances = await YearInstance.find({ courseId })
     .populate('courseId')
-    .sort({ year: -1, semester: -1 });
+    .sort({ year: -1, semester: -1 })
+    .lean();
 
   res.status(200).json({
     success: true,
@@ -298,7 +331,8 @@ exports.getYearInstance = catchAsync(async (req, res, next) => {
   const { id } = req.params;
 
   const instance = await YearInstance.findById(id)
-    .populate('courseId');
+    .populate('courseId')
+    .lean();
 
   if (!instance) {
     return next(new AppError('Year instance not found', 404));
@@ -780,36 +814,50 @@ exports.proxyWeekMaterialPdf = catchAsync(async (req, res, next) => {
   }
 
   const urlCandidates = buildMaterialPdfUrlCandidates(material.url);
+  const driveFileId = extractDriveFileId(material.url);
+
+  if (/https?:\/\/res\.cloudinary\.com\//i.test(String(material.url || ''))) {
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    return res.redirect(urlCandidates[0] || material.url);
+  }
 
   for (const pdfUrl of urlCandidates) {
     try {
-      const response = await fetchPdfBuffer(pdfUrl);
-      const { buffer, isPdf, contentType } = isPdfBufferResponse(response);
+      const response = await fetchPdfStream(pdfUrl);
+      const { contentType, isPdf } = getRemoteContentHeaders(response, pdfUrl);
 
       if (isPdf) {
-        return sendPdfBuffer(res, buffer);
+        streamPdfResponse(res, response);
+        return;
       }
 
-      const driveFileId = extractDriveFileId(material.url);
       if (driveFileId) {
-        const cookieHeader = (response.headers['set-cookie'] || [])
+        response.data.destroy();
+
+        const drivePageResponse = await fetchRemoteText(pdfUrl);
+        const cookieHeader = (drivePageResponse.headers['set-cookie'] || [])
           .map((cookie) => cookie.split(';')[0])
           .join('; ');
-        const html = buffer.toString('utf8');
+        const html = String(drivePageResponse.data || '');
         const confirmedDownloadUrl = extractGoogleDriveDownloadUrl(html, driveFileId);
 
         if (confirmedDownloadUrl) {
-          const confirmedResponse = await fetchPdfBuffer(confirmedDownloadUrl, {
+          const confirmedResponse = await fetchPdfStream(confirmedDownloadUrl, {
             ...(cookieHeader ? { Cookie: cookieHeader } : {}),
             Referer: 'https://drive.google.com/',
           });
-          const confirmedResult = isPdfBufferResponse(confirmedResponse);
+          const confirmedResult = getRemoteContentHeaders(confirmedResponse, confirmedDownloadUrl);
 
           if (confirmedResult.isPdf) {
-            return sendPdfBuffer(res, confirmedResult.buffer);
+            streamPdfResponse(res, confirmedResponse);
+            return;
           }
+
+          confirmedResponse.data.destroy();
         }
       }
+
+      response.data.destroy();
 
       console.error('Unexpected non-PDF material response:', {
         url: pdfUrl,

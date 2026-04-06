@@ -3,6 +3,8 @@ const User = require('../models/User');
 const { AppError } = require('../utils/errorHandler');
 
 const GUEST_SESSION_LIMIT_MS = 5 * 60 * 1000;
+const AUTH_USER_SELECT =
+  '_id name email displayName displayNameLocked authProvider avatar bio isVerified role libraryYearInstances';
 
 const normalizeIssuedAtMs = (issuedAt) => {
   const numericIssuedAt = Number(issuedAt);
@@ -49,7 +51,7 @@ const protectRoute = async (req, res, next) => {
     req.userId = decoded.userId;
 
     // Get user from database
-    const user = await User.findById(decoded.userId);
+    const user = await User.findById(decoded.userId).select(AUTH_USER_SELECT).lean();
     if (!user) {
       return next(new AppError('User not found', 404));
     }
@@ -82,7 +84,7 @@ const optionalAuth = async (req, res, next) => {
 
     if (token) {
       const decoded = verifyToken(token);
-      const user = await User.findById(decoded.userId);
+      const user = await User.findById(decoded.userId).select(AUTH_USER_SELECT).lean();
       if (user && !isGuestSessionExpired(user, decoded)) {
         req.user = user;
         req.userId = decoded.userId;

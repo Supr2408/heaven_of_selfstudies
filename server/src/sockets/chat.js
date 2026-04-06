@@ -11,6 +11,7 @@ const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
 const PHONE_PATTERN = /(?:\+?\d[\d\s-]{7,}\d)/;
 const CONTACT_PROMOTION_PATTERN =
   /\b(?:whatsapp|telegram|tg|tele(?:gram)?|discord|group link|join (?:my|our|the) group|contact me|call me|dm me|inbox me|message me privately|personal number|phone number)\b/i;
+const USER_SOCKET_SELECT = '_id authProvider';
 
 const socketSessions = new Map();
 const roomPresence = new Map();
@@ -108,11 +109,26 @@ function getCooldownRemaining(userId, roomId) {
   if (!lastSentAt) return 0;
 
   const remainingMs = MESSAGE_COOLDOWN_MS - (Date.now() - lastSentAt);
-  return remainingMs > 0 ? Math.ceil(remainingMs / 1000) : 0;
+  if (remainingMs <= 0) {
+    userCooldowns.delete(key);
+    return 0;
+  }
+
+  return Math.ceil(remainingMs / 1000);
 }
 
 function startCooldown(userId, roomId) {
   userCooldowns.set(`${userId}:${roomId}`, Date.now());
+}
+
+function pruneExpiredCooldowns() {
+  const cutoff = Date.now() - MESSAGE_COOLDOWN_MS;
+
+  for (const [key, lastSentAt] of userCooldowns.entries()) {
+    if (lastSentAt <= cutoff) {
+      userCooldowns.delete(key);
+    }
+  }
 }
 
 function containsBlockedChatContent(content = '') {
@@ -138,7 +154,7 @@ async function authenticateSocketUser(socket) {
   }
 
   const decoded = verifyToken(token);
-  const user = await User.findById(decoded.userId);
+  const user = await User.findById(decoded.userId).select(USER_SOCKET_SELECT).lean();
   if (!user) {
     throw new Error('User not found');
   }
@@ -381,5 +397,7 @@ const initializeSocketIO = (io, socket) => {
     cleanupSession(io, socket);
   });
 };
+
+setInterval(pruneExpiredCooldowns, MESSAGE_COOLDOWN_MS).unref();
 
 module.exports = { initializeSocketIO, getGlobalPresenceCount, getGlobalPresenceSnapshot };

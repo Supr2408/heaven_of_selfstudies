@@ -32,6 +32,7 @@ const SEMESTER_ORDER = {
   'July-Oct': 2,
 };
 const MAX_IMPORTED_WEEK = 12;
+const MAX_SEARCH_RESULTS = 20;
 const clampImportedWeekCount = (value) => Math.min(Math.max(Number(value) || 0, 1), MAX_IMPORTED_WEEK);
 
 const sortInstancesDesc = (instances = []) =>
@@ -48,17 +49,19 @@ const buildHubCourseState = async (course, user) => {
     return null;
   }
 
-  const instances = sortInstancesDesc(await YearInstance.find({ courseId: course._id }));
+  const instances = sortInstancesDesc(
+    await YearInstance.find({ courseId: course._id }).select('_id year semester').lean()
+  );
   const latestInstance = instances[0] || null;
   const latestFirstWeek = latestInstance
-    ? await Week.findOne({ yearInstanceId: latestInstance._id }).sort({ weekNumber: 1 })
+    ? await Week.findOne({ yearInstanceId: latestInstance._id }).sort({ weekNumber: 1 }).select('_id').lean()
     : null;
 
   const libraryInstanceIds = getLibraryInstanceIdSet(user);
   const userInstances = instances.filter((instance) => libraryInstanceIds.has(String(instance._id)));
   const preferredInstance = userInstances[0] || latestInstance;
   const preferredFirstWeek = preferredInstance
-    ? await Week.findOne({ yearInstanceId: preferredInstance._id }).sort({ weekNumber: 1 })
+    ? await Week.findOne({ yearInstanceId: preferredInstance._id }).sort({ weekNumber: 1 }).select('_id').lean()
     : null;
 
   return {
@@ -214,7 +217,7 @@ const dedupeCoursesByIdentity = async (courses = []) => {
  * Get all subjects
  */
 exports.getAllSubjects = catchAsync(async (req, res) => {
-  const subjects = await Subject.find().sort({ name: 1 });
+  const subjects = await Subject.find().sort({ name: 1 }).lean();
 
   res.status(200).json({
     success: true,
@@ -229,7 +232,7 @@ exports.getAllSubjects = catchAsync(async (req, res) => {
 exports.getSubjectBySlug = catchAsync(async (req, res, next) => {
   const { slug } = req.params;
 
-  const subject = await Subject.findOne({ slug });
+  const subject = await Subject.findOne({ slug }).lean();
   if (!subject) {
     return next(new AppError('Subject not found', 404));
   }
@@ -314,7 +317,8 @@ exports.getCoursesBySubject = catchAsync(async (req, res, next) => {
 
   const courses = await Course.find({ subjectId })
     .populate('subjectId', 'name slug')
-    .sort({ code: 1 });
+    .sort({ code: 1 })
+    .lean();
   const dedupedCourses = await dedupeCoursesByIdentity(courses);
 
   res.status(200).json({
@@ -331,7 +335,8 @@ exports.getCourseByCode = catchAsync(async (req, res, next) => {
   const { code } = req.params;
 
   const course = await Course.findOne({ code })
-    .populate('subjectId', 'name slug');
+    .populate('subjectId', 'name slug')
+    .lean();
 
   if (!course) {
     return next(new AppError('Course not found', 404));
@@ -349,7 +354,7 @@ exports.getCourseByCode = catchAsync(async (req, res, next) => {
 exports.searchNptelCourses = catchAsync(async (req, res, next) => {
   const query = sanitizeInput(req.query.q || '');
   const institute = sanitizeInput(req.query.institute || '');
-  const limit = parseInt(req.query.limit, 10) || 12;
+  const limit = Math.min(parseInt(req.query.limit, 10) || 12, MAX_SEARCH_RESULTS);
 
   if (!query) {
     return next(new AppError('Search query is required', 400));

@@ -6,10 +6,17 @@ const PRIVATE_ANALYTICS_BASE_URL = String(process.env.PRIVATE_ANALYTICS_BASE_URL
 const PRIVATE_ANALYTICS_SHARED_SECRET = String(
   process.env.PRIVATE_ANALYTICS_SHARED_SECRET || ''
 ).trim();
+const PRIVATE_ANALYTICS_FAILURE_COOLDOWN_MS = Math.max(
+  Number.parseInt(process.env.PRIVATE_ANALYTICS_FAILURE_COOLDOWN_MS || '180000', 10) || 180000,
+  30000
+);
 const DAILY_STUDY_GOAL_MINUTES = Math.max(
   Number.parseInt(process.env.DAILY_STUDY_GOAL_MINUTES || '120', 10) || 120,
   30
 );
+
+let privateAnalyticsDisabledUntil = 0;
+let lastPrivateAnalyticsFailureSignature = '';
 
 const startOfDayFromOffset = (dateValue, timezoneOffsetMinutes = 0) => {
   const trackedAt = new Date(dateValue || Date.now());
@@ -29,9 +36,60 @@ const sanitizeDuration = (value) => {
 const shouldForwardToPrivateAnalytics = () =>
   Boolean(PRIVATE_ANALYTICS_BASE_URL && PRIVATE_ANALYTICS_SHARED_SECRET);
 
+const shouldAttemptPrivateAnalytics = () =>
+  shouldForwardToPrivateAnalytics() && Date.now() >= privateAnalyticsDisabledUntil;
+
 const getPrivateHeaders = () => ({
   'x-analytics-shared-secret': PRIVATE_ANALYTICS_SHARED_SECRET,
 });
+
+const getRemoteFailureMessage = (error) =>
+  String(
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    error?.message ||
+    'Unknown private analytics error'
+  ).trim();
+
+const markPrivateAnalyticsFailure = (operation, error) => {
+  privateAnalyticsDisabledUntil = Date.now() + PRIVATE_ANALYTICS_FAILURE_COOLDOWN_MS;
+
+  const message = getRemoteFailureMessage(error);
+  const signature = `${operation}:${message}`;
+
+  if (lastPrivateAnalyticsFailureSignature !== signature) {
+    console.warn(
+      `[study-analytics] Private analytics ${operation} failed. ` +
+      `Falling back to local storage for ${Math.round(PRIVATE_ANALYTICS_FAILURE_COOLDOWN_MS / 1000)}s. ` +
+      `Reason: ${message}`
+    );
+    lastPrivateAnalyticsFailureSignature = signature;
+  }
+};
+
+const clearPrivateAnalyticsFailure = () => {
+  privateAnalyticsDisabledUntil = 0;
+  lastPrivateAnalyticsFailureSignature = '';
+};
+
+const runWithPrivateAnalyticsFallback = async ({
+  operation,
+  remoteTask,
+  fallbackTask,
+}) => {
+  if (!shouldAttemptPrivateAnalytics()) {
+    return fallbackTask();
+  }
+
+  try {
+    const result = await remoteTask();
+    clearPrivateAnalyticsFailure();
+    return result;
+  } catch (error) {
+    markPrivateAnalyticsFailure(operation, error);
+    return fallbackTask();
+  }
+};
 
 const buildSummaryResponse = (records = []) => {
   const totalSeconds = records.reduce((sum, record) => sum + (record.totalSeconds || 0), 0);
@@ -142,73 +200,81 @@ const trackRemotely = async ({ user, payload }) => {
 };
 
 const trackStudyActivity = async ({ user, payload }) => {
-  if (shouldForwardToPrivateAnalytics()) {
-    return trackRemotely({ user, payload });
-  }
-
-  return trackLocally({ user, payload });
+  return runWithPrivateAnalyticsFallback({
+    operation: 'track',
+    remoteTask: () => trackRemotely({ user, payload }),
+    fallbackTask: () => trackLocally({ user, payload }),
+  });
 };
 
 const getMyTodaySummary = async ({ user, timezoneOffsetMinutes = 0 }) => {
-  if (shouldForwardToPrivateAnalytics()) {
-    const response = await axios.get(
-      `${PRIVATE_ANALYTICS_BASE_URL.replace(/\/+$/, '')}/summary/me/today`,
-      {
-        headers: {
-          ...getPrivateHeaders(),
-          'x-user-id': String(user._id),
-        },
-        params: { timezoneOffsetMinutes },
-        timeout: 10000,
-      }
-    );
-    return response.data?.data || response.data || {};
-  }
+  return runWithPrivateAnalyticsFallback({
+    operation: 'summary',
+    remoteTask: async () => {
+      const response = await axios.get(
+        `${PRIVATE_ANALYTICS_BASE_URL.replace(/\/+$/, '')}/summary/me/today`,
+        {
+          headers: {
+            ...getPrivateHeaders(),
+            'x-user-id': String(user._id),
+          },
+          params: { timezoneOffsetMinutes },
+          timeout: 10000,
+        }
+      );
+      return response.data?.data || response.data || {};
+    },
+    fallbackTask: async () => {
+      const dateKey = startOfDayFromOffset(Date.now(), timezoneOffsetMinutes);
+      const records = await StudyDailySummary.find({
+        userId: user._id,
+        dateKey,
+      }).lean();
 
-  const dateKey = startOfDayFromOffset(Date.now(), timezoneOffsetMinutes);
-  const records = await StudyDailySummary.find({
-    userId: user._id,
-    dateKey,
-  }).lean();
-
-  return buildSummaryResponse(records);
+      return buildSummaryResponse(records);
+    },
+  });
 };
 
 const getAdminDailySummary = async ({ dateKey }) => {
-  if (shouldForwardToPrivateAnalytics()) {
-    const response = await axios.get(
-      `${PRIVATE_ANALYTICS_BASE_URL.replace(/\/+$/, '')}/summary/admin/daily`,
-      {
-        headers: getPrivateHeaders(),
-        params: { dateKey },
-        timeout: 10000,
-      }
-    );
-    return response.data?.data || response.data || {};
-  }
+  return runWithPrivateAnalyticsFallback({
+    operation: 'admin-summary',
+    remoteTask: async () => {
+      const response = await axios.get(
+        `${PRIVATE_ANALYTICS_BASE_URL.replace(/\/+$/, '')}/summary/admin/daily`,
+        {
+          headers: getPrivateHeaders(),
+          params: { dateKey },
+          timeout: 10000,
+        }
+      );
+      return response.data?.data || response.data || {};
+    },
+    fallbackTask: async () => {
+      const records = await StudyDailySummary.find(dateKey ? { dateKey } : {})
+        .sort({ dateKey: -1, totalSeconds: -1 })
+        .lean();
 
-  const records = await StudyDailySummary.find(dateKey ? { dateKey } : {})
-    .sort({ dateKey: -1, totalSeconds: -1 })
-    .lean();
-
-  return {
-    rows: records.map((record) => ({
-      dateKey: record.dateKey,
-      userId: record.userId,
-      email: record.email,
-      name: record.name,
-      authProvider: record.authProvider,
-      courseId: record.courseId,
-      courseTitle: record.courseTitle,
-      totalSeconds: record.totalSeconds || 0,
-      totalMinutes: Math.round((record.totalSeconds || 0) / 60),
-      firstTrackedAt: record.firstTrackedAt || null,
-      lastTrackedAt: record.lastTrackedAt || null,
-      heartbeatCount: record.heartbeatCount || 0,
-      lastWeekId: record.lastWeekId || '',
-      lastWeekTitle: record.lastWeekTitle || '',
-    })),
-  };
+      return {
+        rows: records.map((record) => ({
+          dateKey: record.dateKey,
+          userId: record.userId,
+          email: record.email,
+          name: record.name,
+          authProvider: record.authProvider,
+          courseId: record.courseId,
+          courseTitle: record.courseTitle,
+          totalSeconds: record.totalSeconds || 0,
+          totalMinutes: Math.round((record.totalSeconds || 0) / 60),
+          firstTrackedAt: record.firstTrackedAt || null,
+          lastTrackedAt: record.lastTrackedAt || null,
+          heartbeatCount: record.heartbeatCount || 0,
+          lastWeekId: record.lastWeekId || '',
+          lastWeekTitle: record.lastWeekTitle || '',
+        })),
+      };
+    },
+  });
 };
 
 module.exports = {

@@ -6,17 +6,19 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
+  Download,
   FileText,
   Heart,
   Link as LinkIcon,
   Loader2,
   MessageCircle,
+  PackageOpen,
   Send,
   StickyNote,
   Trash2,
   UploadCloud,
 } from 'lucide-react';
-import { resourceAPI, resolveApiAssetUrl } from '@/lib/api';
+import { resourceAPI, resolveApiAssetUrl, yearInstanceAPI } from '@/lib/api';
 import {
   COURSE_DISCUSSION_UPLOAD_ACCEPT,
   MAX_COURSE_DISCUSSION_UPLOAD_LABEL,
@@ -118,11 +120,21 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
     description: '',
     file: null,
   });
+  const [downloadStatus, setDownloadStatus] = useState({
+    loading: false,
+    enabled: false,
+    flag: 0,
+    error: '',
+  });
 
   const currentUserId = useMemo(() => user?._id || user?.id || '', [user]);
   const canPostAsUser = isGoogleUser(user);
   const isGuestMode = isGuestLikeUser(user);
   const selectedCategoryMeta = CATEGORY_META[newPost.type];
+  const subjectDownloadUrl = useMemo(
+    () => (courseId ? yearInstanceAPI.getSubjectDownloadUrl(courseId) : ''),
+    [courseId]
+  );
 
   const filteredResources = useMemo(() => {
     if (selectedFilter === 'all') return resources;
@@ -153,6 +165,56 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
   useEffect(() => {
     fetchResources();
   }, [fetchResources]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const loadDownloadStatus = async () => {
+      if (!courseId) {
+        setDownloadStatus({
+          loading: false,
+          enabled: false,
+          flag: 0,
+          error: '',
+        });
+        return;
+      }
+
+      try {
+        setDownloadStatus((state) => ({
+          ...state,
+          loading: true,
+          error: '',
+        }));
+
+        const response = await yearInstanceAPI.getSubjectDownloadStatus(courseId);
+        if (ignore) return;
+
+        const nextStatus = response?.data || {};
+        setDownloadStatus({
+          loading: false,
+          enabled: Boolean(nextStatus.enabled),
+          flag: Number(nextStatus.flag) === 1 ? 1 : 0,
+          error: '',
+        });
+      } catch {
+        if (ignore) return;
+
+        setDownloadStatus({
+          loading: false,
+          enabled: false,
+          flag: 0,
+          error: 'Unable to verify the full subject download switch right now.',
+        });
+      }
+    };
+
+    loadDownloadStatus();
+
+    return () => {
+      ignore = true;
+    };
+  }, [courseId]);
 
   useEffect(() => {
     setUploadState((state) => ({
@@ -186,6 +248,14 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
     }
 
     return true;
+  };
+
+  const handleSubjectDownload = () => {
+    if (!downloadStatus.enabled || !subjectDownloadUrl) {
+      return;
+    }
+
+    window.location.assign(subjectDownloadUrl);
   };
 
   const handleCreatePost = async () => {
@@ -389,6 +459,71 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
           {error}
         </div>
       ) : null}
+
+      <section className="overflow-hidden rounded-3xl border border-blue-200 bg-gradient-to-r from-blue-50 via-white to-cyan-50 shadow-sm">
+        <div className="flex flex-col gap-5 px-6 py-6 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-blue-700">
+              Pinned Download
+            </p>
+            <div className="mt-3 flex items-center gap-3">
+              <div className="rounded-2xl bg-blue-600 p-3 text-white shadow-sm">
+                <PackageOpen size={22} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900">Download the full subject bundle</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-600 sm:text-base">
+                  One ZIP file with the approved course discussion files plus every available week
+                  material arranged batch-wise with proper folders.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-semibold">
+              <span className="rounded-full border border-blue-200 bg-white px-3 py-1.5 text-blue-700">
+                Server flag: {downloadStatus.flag}
+              </span>
+              <span
+                className={`rounded-full px-3 py-1.5 ${
+                  downloadStatus.enabled
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-amber-100 text-amber-700'
+                }`}
+              >
+                {downloadStatus.enabled ? 'Download enabled' : 'Download disabled'}
+              </span>
+            </div>
+
+            {downloadStatus.error ? (
+              <p className="mt-3 text-sm text-red-600">{downloadStatus.error}</p>
+            ) : (
+              <p className="mt-3 text-sm text-slate-500">
+                Set `SUBJECT_DOWNLOAD_ENABLED=1` on the server to keep this active, or `0` to
+                disable it whenever needed.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col items-start gap-3 lg:items-end">
+            <button
+              type="button"
+              onClick={handleSubjectDownload}
+              disabled={downloadStatus.loading || !downloadStatus.enabled}
+              className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {downloadStatus.loading ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Download size={16} />
+              )}
+              Download complete subject
+            </button>
+            <p className="text-xs text-slate-500">
+              The ZIP is generated fresh from the current course discussion and week material data.
+            </p>
+          </div>
+        </div>
+      </section>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

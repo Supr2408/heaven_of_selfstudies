@@ -225,6 +225,8 @@ export const yearInstanceAPI = {
   getWeeks: (yearInstanceId) => apiClient(`/weeks/weeks/${yearInstanceId}`),
   getWeek: (id) => apiRequest(`/weeks/week/${id}`),
   getWeekStats: (weekId) => apiRequest(`/weeks/week/${weekId}/stats`),
+  getSubjectDownloadStatus: (courseId) => apiClient(`/weeks/course/${courseId}/subject-download/status`),
+  getSubjectDownloadUrl: (courseId) => `${API_BASE_URL}/weeks/course/${courseId}/subject-download`,
 };
 
 // Resource API

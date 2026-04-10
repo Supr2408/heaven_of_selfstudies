@@ -1,6 +1,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const { PDFDocument } = require('pdf-lib');
 const YearInstance = require('../models/YearInstance');
 const Week = require('../models/Week');
 const Message = require('../models/Message');
@@ -14,7 +15,7 @@ const {
   convertDriveLink,
 } = require('../utils/nptelScraper');
 const { resolveUploadUrlToPath } = require('../utils/uploadStorage');
-const { buildStoredZip } = require('../utils/zipBuilder');
+const { ZipStreamWriter } = require('../utils/zipStreamWriter');
 
 const DRIVE_FILE_PATTERNS = [
   /\/file\/d\/([a-zA-Z0-9-_]+)/,
@@ -62,6 +63,24 @@ const getSubjectDownloadFlagValue = () => {
 const isSubjectDownloadEnabled = () => getSubjectDownloadFlagValue() === '1';
 
 const getSubjectDownloadFlagNumber = () => (isSubjectDownloadEnabled() ? 1 : 0);
+
+const SEMESTER_SORT_ORDER = {
+  'Jan-Apr': 1,
+  'Jul-Oct': 2,
+  'July-Oct': 2,
+  'Aug-Oct': 2,
+};
+
+const getSemesterSortOrder = (semester = '') => SEMESTER_SORT_ORDER[String(semester || '').trim()] || 0;
+
+const compareYearInstancesLatestFirst = (left, right) => {
+  const yearDelta = (right?.year || 0) - (left?.year || 0);
+  if (yearDelta !== 0) {
+    return yearDelta;
+  }
+
+  return getSemesterSortOrder(right?.semester) - getSemesterSortOrder(left?.semester);
+};
 
 const getRemoteContentHeaders = (response, fallbackUrl = '') => {
   const contentType = String(response?.headers?.['content-type'] || '').toLowerCase();
@@ -300,6 +319,92 @@ const ensureUniqueArchivePath = (requestedPath = '', seenPaths = new Set()) => {
 
 const createTextBuffer = (lines = []) => Buffer.from(`${lines.join('\r\n')}\r\n`, 'utf8');
 
+const loadLocalMaterialBuffer = async (url = '') => {
+  const localFilePath = resolveUploadUrlToPath(url);
+  if (!localFilePath || !fs.existsSync(localFilePath)) {
+    throw new Error('Local uploaded file is missing from storage.');
+  }
+
+  return {
+    buffer: await fs.promises.readFile(localFilePath),
+    extension: path.extname(localFilePath).toLowerCase(),
+  };
+};
+
+const loadRemoteMaterialBuffer = async ({ url = '', fileType = '' }) => {
+  const preferredExtension = getPreferredExtension(fileType, url);
+  const urlCandidates = buildMaterialUrlCandidates(url, preferredExtension);
+  const driveFileId = extractDriveFileId(url);
+  let lastError = new Error('Unable to download remote material.');
+
+  for (const candidateUrl of urlCandidates) {
+    try {
+      const response = await fetchRemoteBinary(candidateUrl);
+      const headers = getRemoteBinaryHeaders(response, candidateUrl);
+
+      if (!headers.isHtml) {
+        return {
+          buffer: Buffer.from(response.data),
+          extension: getExtensionFromHeaders(headers) || preferredExtension,
+        };
+      }
+
+      if (!driveFileId) {
+        lastError = new Error('Remote URL returned HTML instead of a downloadable file.');
+        continue;
+      }
+
+      const drivePageResponse = await fetchRemoteText(candidateUrl);
+      const cookieHeader = (drivePageResponse.headers['set-cookie'] || [])
+        .map((cookie) => cookie.split(';')[0])
+        .join('; ');
+      const html = String(drivePageResponse.data || '');
+      const confirmedDownloadUrl = extractGoogleDriveDownloadUrl(html, driveFileId);
+
+      if (!confirmedDownloadUrl) {
+        lastError = new Error('Google Drive download confirmation could not be resolved.');
+        continue;
+      }
+
+      const confirmedResponse = await fetchRemoteBinary(confirmedDownloadUrl, {
+        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+        Referer: 'https://drive.google.com/',
+      });
+      const confirmedHeaders = getRemoteBinaryHeaders(confirmedResponse, confirmedDownloadUrl);
+
+      if (!confirmedHeaders.isHtml) {
+        return {
+          buffer: Buffer.from(confirmedResponse.data),
+          extension: getExtensionFromHeaders(confirmedHeaders) || preferredExtension,
+        };
+      }
+
+      lastError = new Error('Google Drive returned HTML instead of the file content.');
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
+};
+
+const loadBundleSourceBuffer = async ({ url = '', fileType = '' }) => {
+  if (String(url || '').startsWith('/uploads/')) {
+    return loadLocalMaterialBuffer(url);
+  }
+
+  return loadRemoteMaterialBuffer({ url, fileType });
+};
+
+const isPdfMaterial = (material = {}) => {
+  const normalizedFileType = String(material?.fileType || '').toLowerCase();
+  if (normalizedFileType === 'pdf') {
+    return true;
+  }
+
+  return getPreferredExtension(material?.fileType, material?.url || '') === '.pdf';
+};
+
 const streamPdfResponse = (res, response) => {
   const upstreamContentType = response?.headers?.['content-type'];
   const upstreamContentLength = response?.headers?.['content-length'];
@@ -424,35 +529,48 @@ const removeBrokenMaterialByUrl = async (week, brokenUrl = '') => {
   return week;
 };
 
-const loadLocalMaterialBuffer = async (url = '') => {
+const fetchRemoteStream = async (url, extraHeaders = {}) =>
+  axios.get(url, {
+    responseType: 'stream',
+    timeout: 30000,
+    maxRedirects: 5,
+    headers: {
+      ...defaultPdfRequestHeaders,
+      ...extraHeaders,
+    },
+  });
+
+const openLocalBundleSourceStream = async (url = '') => {
   const localFilePath = resolveUploadUrlToPath(url);
   if (!localFilePath || !fs.existsSync(localFilePath)) {
     throw new Error('Local uploaded file is missing from storage.');
   }
 
   return {
-    buffer: await fs.promises.readFile(localFilePath),
+    stream: fs.createReadStream(localFilePath),
     extension: path.extname(localFilePath).toLowerCase(),
   };
 };
 
-const loadRemoteMaterialBuffer = async ({ url = '', fileType = '' }) => {
+const openRemoteBundleSourceStream = async ({ url = '', fileType = '' }) => {
   const preferredExtension = getPreferredExtension(fileType, url);
   const urlCandidates = buildMaterialUrlCandidates(url, preferredExtension);
   const driveFileId = extractDriveFileId(url);
-  let lastError = new Error('Unable to download remote material.');
+  let lastError = new Error('Unable to open remote material stream.');
 
   for (const candidateUrl of urlCandidates) {
     try {
-      const response = await fetchRemoteBinary(candidateUrl);
+      const response = await fetchRemoteStream(candidateUrl);
       const headers = getRemoteBinaryHeaders(response, candidateUrl);
 
       if (!headers.isHtml) {
         return {
-          buffer: Buffer.from(response.data),
+          stream: response.data,
           extension: getExtensionFromHeaders(headers) || preferredExtension,
         };
       }
+
+      response.data.destroy();
 
       if (!driveFileId) {
         lastError = new Error('Remote URL returned HTML instead of a downloadable file.');
@@ -471,7 +589,7 @@ const loadRemoteMaterialBuffer = async ({ url = '', fileType = '' }) => {
         continue;
       }
 
-      const confirmedResponse = await fetchRemoteBinary(confirmedDownloadUrl, {
+      const confirmedResponse = await fetchRemoteStream(confirmedDownloadUrl, {
         ...(cookieHeader ? { Cookie: cookieHeader } : {}),
         Referer: 'https://drive.google.com/',
       });
@@ -479,11 +597,12 @@ const loadRemoteMaterialBuffer = async ({ url = '', fileType = '' }) => {
 
       if (!confirmedHeaders.isHtml) {
         return {
-          buffer: Buffer.from(confirmedResponse.data),
+          stream: confirmedResponse.data,
           extension: getExtensionFromHeaders(confirmedHeaders) || preferredExtension,
         };
       }
 
+      confirmedResponse.data.destroy();
       lastError = new Error('Google Drive returned HTML instead of the file content.');
     } catch (error) {
       lastError = error;
@@ -493,95 +612,39 @@ const loadRemoteMaterialBuffer = async ({ url = '', fileType = '' }) => {
   throw lastError;
 };
 
-const loadBundleSourceFile = async ({ url = '', fileType = '' }) => {
+const openBundleSourceStream = async ({ url = '', fileType = '' }) => {
   if (String(url || '').startsWith('/uploads/')) {
-    return loadLocalMaterialBuffer(url);
+    return openLocalBundleSourceStream(url);
   }
 
-  return loadRemoteMaterialBuffer({ url, fileType });
+  return openRemoteBundleSourceStream({ url, fileType });
 };
 
-const buildArchiveFileName = ({
-  index,
-  title,
-  fallbackPrefix,
-  fallbackExtension,
-  detectedExtension,
-}) => {
-  const sanitizedBaseName = sanitizeArchivePathSegment(
+const buildArchiveBaseName = ({ index, title, fallbackPrefix }) =>
+  `${String(index).padStart(2, '0')} - ${sanitizeArchivePathSegment(
     title || `${fallbackPrefix} ${String(index).padStart(2, '0')}`,
     `${fallbackPrefix}-${String(index).padStart(2, '0')}`
-  );
-  const extension = detectedExtension || fallbackExtension || '';
+  )}`;
 
-  return `${String(index).padStart(2, '0')} - ${sanitizedBaseName}${extension}`;
-};
-
-const buildCourseBundle = async ({ course, yearInstances, weeks, courseResources }) => {
-  const entries = [];
-  const skippedItems = [];
-  const seenPaths = new Set();
+const createCourseBundlePlan = ({ course, yearInstances, weeks, courseResources }) => {
   const rootFolder = sanitizeArchivePathSegment(course?.title || 'Course', 'Course');
-
-  const addTextEntry = (relativePath, lines, date = new Date()) => {
-    const uniquePath = ensureUniqueArchivePath(`${rootFolder}/${relativePath}`, seenPaths);
-    entries.push({
-      name: uniquePath,
-      data: createTextBuffer(lines),
-      date,
-    });
-  };
-
-  const addBinaryEntry = async ({
-    relativeFolder,
-    entryIndex,
-    title,
-    fallbackPrefix,
-    fallbackExtension = '',
-    url,
-    fileType,
-    date,
-    failureLabel,
-  }) => {
-    try {
-      const { buffer, extension } = await loadBundleSourceFile({ url, fileType });
-      const relativeFileName = buildArchiveFileName({
-        index: entryIndex,
-        title,
-        fallbackPrefix,
-        fallbackExtension,
-        detectedExtension: extension,
-      });
-
-      const uniquePath = ensureUniqueArchivePath(
-        `${rootFolder}/${relativeFolder}/${relativeFileName}`,
-        seenPaths
-      );
-
-      entries.push({
-        name: uniquePath,
-        data: buffer,
-        date: date || new Date(),
-      });
-    } catch (error) {
-      skippedItems.push({
-        label: failureLabel,
-        reason: error?.message || 'Unknown download error',
-        url,
-      });
-    }
-  };
-
-  addTextEntry('README.txt', [
-    `Course bundle: ${course?.title || 'Course'}`,
-    `Generated at: ${new Date().toISOString()}`,
-    '',
-    'Folder structure:',
-    '- Course discussion uploads and link summary are stored under "Course Discussion".',
-    '- Batch-wise week materials are stored under "Batches/<year-semester>/Week XX - title".',
-    '',
-    'This archive is generated from the currently available approved course discussion files and week materials.',
-  ]);
+  const plannedEntries = [
+    {
+      kind: 'text',
+      relativePath: 'README.txt',
+      lines: [
+        `Course bundle: ${course?.title || 'Course'}`,
+        `Generated at: ${new Date().toISOString()}`,
+        '',
+        'Folder structure:',
+        '- Course discussion uploads and link summary are stored under "Course Discussion".',
+        '- Batch-wise week materials are stored under "Batches/<year-semester>/Week XX - title".',
+        '',
+        'This archive is generated from the currently available approved course discussion files and week materials.',
+      ],
+      date: new Date(),
+    },
+  ];
 
   const courseFileResources = [];
   const courseLinkResources = [];
@@ -601,12 +664,15 @@ const buildCourseBundle = async ({ course, yearInstances, weeks, courseResources
 
   for (let index = 0; index < courseFileResources.length; index += 1) {
     const resource = courseFileResources[index];
-    await addBinaryEntry({
+    plannedEntries.push({
+      kind: 'file',
       relativeFolder: 'Course Discussion',
-      entryIndex: index + 1,
-      title: resource.title,
-      fallbackPrefix: 'course-resource',
-      fallbackExtension: getPreferredExtension(resource.fileType, resource.url),
+      baseName: buildArchiveBaseName({
+        index: index + 1,
+        title: resource.title,
+        fallbackPrefix: 'course-resource',
+      }),
+      preferredExtension: getPreferredExtension(resource.fileType, resource.url),
       url: resource.url,
       fileType: resource.fileType,
       date: resource.createdAt,
@@ -615,17 +681,18 @@ const buildCourseBundle = async ({ course, yearInstances, weeks, courseResources
   }
 
   if (courseLinkResources.length > 0) {
-    addTextEntry(
-      'Course Discussion/Shared Links.txt',
-      courseLinkResources.flatMap((resource, index) => [
+    plannedEntries.push({
+      kind: 'text',
+      relativePath: 'Course Discussion/Shared Links.txt',
+      lines: courseLinkResources.flatMap((resource, index) => [
         `${index + 1}. ${resource.title || 'Untitled link'}`,
         `Type: ${resource.type || 'link'}`,
         `URL: ${resource.url || 'N/A'}`,
         `Description: ${resource.description || 'No description'}`,
         '',
       ]),
-      courseLinkResources[0]?.createdAt
-    );
+      date: courseLinkResources[0]?.createdAt || new Date(),
+    });
   }
 
   const weeksByYearInstance = new Map();
@@ -659,20 +726,24 @@ const buildCourseBundle = async ({ course, yearInstances, weeks, courseResources
       for (let materialIndex = 0; materialIndex < weekMaterials.length; materialIndex += 1) {
         const material = weekMaterials[materialIndex];
         if (!material?.url) {
-          skippedItems.push({
-            label: `${week.title || 'Week'} material ${materialIndex + 1}`,
+          plannedEntries.push({
+            kind: 'missing',
+            failureLabel: `${week.title || 'Week'} material ${materialIndex + 1}`,
             reason: 'Material URL is missing.',
             url: '',
           });
           continue;
         }
 
-        await addBinaryEntry({
+        plannedEntries.push({
+          kind: 'file',
           relativeFolder,
-          entryIndex: materialIndex + 1,
-          title: material.title,
-          fallbackPrefix: `week-${week.weekNumber || 0}-material`,
-          fallbackExtension: getPreferredExtension(material.fileType, material.url),
+          baseName: buildArchiveBaseName({
+            index: materialIndex + 1,
+            title: material.title,
+            fallbackPrefix: `week-${week.weekNumber || 0}-material`,
+          }),
+          preferredExtension: getPreferredExtension(material.fileType, material.url),
           url: material.url,
           fileType: material.fileType,
           date: material.uploadedAt || week.updatedAt || week.createdAt,
@@ -681,48 +752,300 @@ const buildCourseBundle = async ({ course, yearInstances, weeks, courseResources
       }
 
       if (legacyPdfLinks.length > 0) {
-        addTextEntry(
-          `${relativeFolder}/Legacy PDF Links.txt`,
-          legacyPdfLinks.flatMap((item, index) => [
+        plannedEntries.push({
+          kind: 'text',
+          relativePath: `${relativeFolder}/Legacy PDF Links.txt`,
+          lines: legacyPdfLinks.flatMap((item, index) => [
             `${index + 1}. ${item.title || 'Untitled PDF link'}`,
             `URL: ${item.url || 'N/A'}`,
             '',
           ]),
-          week.updatedAt || week.createdAt
-        );
+          date: week.updatedAt || week.createdAt,
+        });
       }
 
       if (pyqLinks.length > 0) {
-        addTextEntry(
-          `${relativeFolder}/Previous Year Questions.txt`,
-          pyqLinks.flatMap((item, index) => [
+        plannedEntries.push({
+          kind: 'text',
+          relativePath: `${relativeFolder}/Previous Year Questions.txt`,
+          lines: pyqLinks.flatMap((item, index) => [
             `${index + 1}. ${item.year || 'Unknown year'} - ${item.question || 'Question'}`,
             `URL: ${item.url || 'N/A'}`,
             '',
           ]),
-          week.updatedAt || week.createdAt
-        );
+          date: week.updatedAt || week.createdAt,
+        });
       }
     }
   }
 
+  return {
+    rootFolder,
+    fileName: `${sanitizeArchivePathSegment(course?.title || 'course-bundle', 'course-bundle')}.zip`,
+    plannedEntries,
+  };
+};
+
+const streamCourseBundle = async ({ res, bundlePlan }) => {
+  const zipWriter = new ZipStreamWriter(res);
+  const seenPaths = new Set();
+  const skippedItems = [];
+
+  for (const entry of bundlePlan.plannedEntries) {
+    if (entry.kind === 'missing') {
+      skippedItems.push({
+        label: entry.failureLabel,
+        reason: entry.reason,
+        url: entry.url,
+      });
+      continue;
+    }
+
+    if (entry.kind === 'text') {
+      const fullPath = ensureUniqueArchivePath(
+        `${bundlePlan.rootFolder}/${entry.relativePath}`,
+        seenPaths
+      );
+      await zipWriter.addBuffer(fullPath, createTextBuffer(entry.lines), entry.date);
+      continue;
+    }
+
+    try {
+      const source = await openBundleSourceStream({
+        url: entry.url,
+        fileType: entry.fileType,
+      });
+      const extension = source.extension || entry.preferredExtension || '';
+      const fullPath = ensureUniqueArchivePath(
+        `${bundlePlan.rootFolder}/${entry.relativeFolder}/${entry.baseName}${extension}`,
+        seenPaths
+      );
+
+      try {
+        await zipWriter.addStream(fullPath, source.stream, entry.date);
+      } finally {
+        if (source.stream && typeof source.stream.destroy === 'function') {
+          source.stream.destroy();
+        }
+      }
+    } catch (error) {
+      skippedItems.push({
+        label: entry.failureLabel,
+        reason: error?.message || 'Unknown download error',
+        url: entry.url,
+      });
+    }
+  }
+
   if (skippedItems.length > 0) {
-    addTextEntry(
-      'Download Report.txt',
-      skippedItems.flatMap((item, index) => [
-        `${index + 1}. ${item.label}`,
-        `Reason: ${item.reason}`,
-        `URL: ${item.url || 'N/A'}`,
-        '',
-      ])
+    const reportPath = ensureUniqueArchivePath(
+      `${bundlePlan.rootFolder}/Download Report.txt`,
+      seenPaths
+    );
+    await zipWriter.addBuffer(
+      reportPath,
+      createTextBuffer(
+        skippedItems.flatMap((item, index) => [
+          `${index + 1}. ${item.label}`,
+          `Reason: ${item.reason}`,
+          `URL: ${item.url || 'N/A'}`,
+          '',
+        ])
+      ),
+      new Date()
     );
   }
 
+  await zipWriter.finalize();
+};
+
+const createMergedWeeklyPdfBundlePlan = ({ course, yearInstances, weeks }) => {
+  const rootFolder = sanitizeArchivePathSegment(
+    `${course?.title || 'Course'} Merged Weekly PDFs`,
+    'Merged Weekly PDFs'
+  );
+  const plannedWeeks = [];
+  const yearInstanceLookup = new Map(
+    yearInstances.map((yearInstance) => [String(yearInstance._id), yearInstance])
+  );
+  const weeksByNumber = new Map();
+
+  for (const week of weeks) {
+    const weekNumber = Number(week?.weekNumber || 0);
+    if (!weeksByNumber.has(weekNumber)) {
+      weeksByNumber.set(weekNumber, []);
+    }
+    weeksByNumber.get(weekNumber).push(week);
+  }
+
+  const orderedWeekNumbers = [...weeksByNumber.keys()]
+    .filter((weekNumber) => weekNumber > 0)
+    .sort((left, right) => left - right);
+
+  for (const weekNumber of orderedWeekNumbers) {
+    const groupedWeeks = (weeksByNumber.get(weekNumber) || []).sort((left, right) => {
+      const leftYearInstance = yearInstanceLookup.get(String(left?.yearInstanceId?._id || left?.yearInstanceId || ''));
+      const rightYearInstance = yearInstanceLookup.get(String(right?.yearInstanceId?._id || right?.yearInstanceId || ''));
+      return compareYearInstancesLatestFirst(leftYearInstance, rightYearInstance);
+    });
+
+    const sources = [];
+    for (const week of groupedWeeks) {
+      const yearInstance = yearInstanceLookup.get(String(week?.yearInstanceId?._id || week?.yearInstanceId || ''));
+      const batchLabel = `${yearInstance?.year || 'Unknown'} - ${yearInstance?.semester || 'Batch'}`;
+      const materials = (Array.isArray(week?.materials) ? week.materials : [])
+        .filter((material) => material?.url && isPdfMaterial(material))
+        .sort((left, right) => {
+          const leftTime = new Date(left?.uploadedAt || week?.updatedAt || week?.createdAt || 0).getTime();
+          const rightTime = new Date(right?.uploadedAt || week?.updatedAt || week?.createdAt || 0).getTime();
+          return rightTime - leftTime;
+        });
+
+      for (const material of materials) {
+        sources.push({
+          title: material.title || `${week.title || `Week ${weekNumber}`} PDF`,
+          url: material.url,
+          fileType: material.fileType,
+          batchLabel,
+          weekTitle: week.title || `Week ${weekNumber}`,
+          date: material.uploadedAt || week.updatedAt || week.createdAt,
+        });
+      }
+
+      const legacyPdfLinks = Array.isArray(week?.pdfLinks) ? week.pdfLinks : [];
+      for (const pdfLink of legacyPdfLinks) {
+        if (!pdfLink?.url) {
+          continue;
+        }
+
+        sources.push({
+          title: pdfLink.title || `${week.title || `Week ${weekNumber}`} legacy PDF`,
+          url: pdfLink.url,
+          fileType: 'pdf',
+          batchLabel,
+          weekTitle: week.title || `Week ${weekNumber}`,
+          date: week.updatedAt || week.createdAt,
+        });
+      }
+    }
+
+    if (sources.length === 0) {
+      continue;
+    }
+
+    plannedWeeks.push({
+      weekNumber,
+      weekLabel: `Week ${String(weekNumber).padStart(2, '0')}`,
+      fileName: `${sanitizeArchivePathSegment(
+        `Week ${String(weekNumber).padStart(2, '0')} Combined`,
+        `Week ${String(weekNumber).padStart(2, '0')} Combined`
+      )}.pdf`,
+      sources,
+    });
+  }
+
   return {
-    fileName: `${sanitizeArchivePathSegment(course?.title || 'course-bundle', 'course-bundle')}.zip`,
-    archiveBuffer: buildStoredZip(entries),
-    skippedItems,
+    rootFolder,
+    fileName: `${sanitizeArchivePathSegment(
+      `${course?.title || 'course'}-merged-weekly-pdfs`,
+      'merged-weekly-pdfs'
+    )}.zip`,
+    readmeLines: [
+      `Course bundle: ${course?.title || 'Course'}`,
+      `Generated at: ${new Date().toISOString()}`,
+      '',
+      'This ZIP contains one merged PDF per week number.',
+      'Inside each merged PDF, source files are appended from latest batch to oldest batch.',
+    ],
+    plannedWeeks,
   };
+};
+
+const streamMergedWeeklyPdfBundle = async ({ res, bundlePlan }) => {
+  const zipWriter = new ZipStreamWriter(res);
+  const seenPaths = new Set();
+  const skippedItems = [];
+
+  await zipWriter.addBuffer(
+    ensureUniqueArchivePath(`${bundlePlan.rootFolder}/README.txt`, seenPaths),
+    createTextBuffer(bundlePlan.readmeLines),
+    new Date()
+  );
+
+  for (const plannedWeek of bundlePlan.plannedWeeks) {
+    const mergedPdf = await PDFDocument.create();
+    const includedSources = [];
+
+    for (const source of plannedWeek.sources) {
+      try {
+        const { buffer } = await loadBundleSourceBuffer({
+          url: source.url,
+          fileType: source.fileType,
+        });
+        const sourcePdf = await PDFDocument.load(buffer, { ignoreEncryption: true });
+        const copiedPages = await mergedPdf.copyPages(sourcePdf, sourcePdf.getPageIndices());
+        copiedPages.forEach((page) => mergedPdf.addPage(page));
+        includedSources.push(source);
+      } catch (error) {
+        skippedItems.push({
+          label: `${plannedWeek.weekLabel}: ${source.title}`,
+          reason: error?.message || 'Unable to merge this PDF.',
+          url: source.url,
+        });
+      }
+    }
+
+    if (mergedPdf.getPageCount() === 0) {
+      skippedItems.push({
+        label: `${plannedWeek.weekLabel} merged PDF`,
+        reason: 'No valid PDFs were available to merge for this week.',
+        url: '',
+      });
+      continue;
+    }
+
+    const mergedPdfBytes = await mergedPdf.save();
+    const mergedPdfPath = ensureUniqueArchivePath(
+      `${bundlePlan.rootFolder}/${plannedWeek.fileName}`,
+      seenPaths
+    );
+    await zipWriter.addBuffer(mergedPdfPath, Buffer.from(mergedPdfBytes), new Date());
+
+    const sourcesPath = ensureUniqueArchivePath(
+      `${bundlePlan.rootFolder}/${plannedWeek.weekLabel} Sources.txt`,
+      seenPaths
+    );
+    await zipWriter.addBuffer(
+      sourcesPath,
+      createTextBuffer(
+        includedSources.flatMap((source, index) => [
+          `${index + 1}. ${source.title}`,
+          `Batch: ${source.batchLabel}`,
+          `Week title: ${source.weekTitle}`,
+          `URL: ${source.url}`,
+          '',
+        ])
+      ),
+      new Date()
+    );
+  }
+
+  if (skippedItems.length > 0) {
+    await zipWriter.addBuffer(
+      ensureUniqueArchivePath(`${bundlePlan.rootFolder}/Download Report.txt`, seenPaths),
+      createTextBuffer(
+        skippedItems.flatMap((item, index) => [
+          `${index + 1}. ${item.label}`,
+          `Reason: ${item.reason}`,
+          `URL: ${item.url || 'N/A'}`,
+          '',
+        ])
+      ),
+      new Date()
+    );
+  }
+
+  await zipWriter.finalize();
 };
 
 exports.getSubjectDownloadStatus = catchAsync(async (req, res, next) => {
@@ -770,9 +1093,7 @@ exports.downloadSubjectBundle = catchAsync(async (req, res, next) => {
     return next(new AppError('Course not found', 404));
   }
 
-  const yearInstances = await YearInstance.find({ courseId })
-    .sort({ year: -1, semester: 1 })
-    .lean();
+  const yearInstances = (await YearInstance.find({ courseId }).lean()).sort(compareYearInstancesLatestFirst);
   const weeks = await Week.find({ yearInstanceId: { $in: yearInstances.map((item) => item._id) } })
     .sort({ weekNumber: 1 })
     .lean();
@@ -786,7 +1107,7 @@ exports.downloadSubjectBundle = catchAsync(async (req, res, next) => {
     .sort({ createdAt: 1 })
     .lean();
 
-  const { archiveBuffer, fileName } = await buildCourseBundle({
+  const bundlePlan = createCourseBundlePlan({
     course,
     yearInstances,
     weeks,
@@ -794,11 +1115,77 @@ exports.downloadSubjectBundle = catchAsync(async (req, res, next) => {
   });
 
   res.setHeader('Content-Type', 'application/zip');
-  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-  res.setHeader('Content-Length', archiveBuffer.length);
+  res.setHeader('Content-Disposition', `attachment; filename="${bundlePlan.fileName}"`);
   res.setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
+  res.flushHeaders?.();
 
-  return res.send(archiveBuffer);
+  try {
+    await streamCourseBundle({
+      res,
+      bundlePlan,
+    });
+    return res.end();
+  } catch (error) {
+    if (!res.headersSent) {
+      return next(error);
+    }
+
+    console.error('Error streaming subject bundle:', error.message);
+    return res.destroy(error);
+  }
+});
+
+exports.downloadMergedWeeklyPdfBundle = catchAsync(async (req, res, next) => {
+  const { courseId } = req.params;
+
+  if (!courseId) {
+    return next(new AppError('Course ID is required', 400));
+  }
+
+  if (!isSubjectDownloadEnabled()) {
+    return next(
+      new AppError(
+        'Merged weekly PDF download is disabled right now. Set SUBJECT_DOWNLOAD_ENABLED=1 to enable it.',
+        403
+      )
+    );
+  }
+
+  const course = await Course.findById(courseId).select('title code').lean();
+  if (!course) {
+    return next(new AppError('Course not found', 404));
+  }
+
+  const yearInstances = (await YearInstance.find({ courseId }).lean()).sort(compareYearInstancesLatestFirst);
+  const weeks = await Week.find({ yearInstanceId: { $in: yearInstances.map((item) => item._id) } })
+    .sort({ weekNumber: 1 })
+    .lean();
+
+  const bundlePlan = createMergedWeeklyPdfBundlePlan({
+    course,
+    yearInstances,
+    weeks,
+  });
+
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${bundlePlan.fileName}"`);
+  res.setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
+  res.flushHeaders?.();
+
+  try {
+    await streamMergedWeeklyPdfBundle({
+      res,
+      bundlePlan,
+    });
+    return res.end();
+  } catch (error) {
+    if (!res.headersSent) {
+      return next(error);
+    }
+
+    console.error('Error streaming merged weekly PDF bundle:', error.message);
+    return res.destroy(error);
+  }
 });
 
 /**

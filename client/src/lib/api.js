@@ -227,6 +227,8 @@ export const yearInstanceAPI = {
   getWeekStats: (weekId) => apiRequest(`/weeks/week/${weekId}/stats`),
   getSubjectDownloadStatus: (courseId) => apiClient(`/weeks/course/${courseId}/subject-download/status`),
   getSubjectDownloadUrl: (courseId) => `${API_BASE_URL}/weeks/course/${courseId}/subject-download`,
+  getMergedWeeklyPdfDownloadUrl: (courseId) =>
+    `${API_BASE_URL}/weeks/course/${courseId}/subject-download/merged-weekly-pdfs`,
 };
 
 // Resource API

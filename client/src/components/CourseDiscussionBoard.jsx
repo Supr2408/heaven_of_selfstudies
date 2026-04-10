@@ -135,6 +135,10 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
     () => (courseId ? yearInstanceAPI.getSubjectDownloadUrl(courseId) : ''),
     [courseId]
   );
+  const mergedWeeklyPdfDownloadUrl = useMemo(
+    () => (courseId ? yearInstanceAPI.getMergedWeeklyPdfDownloadUrl(courseId) : ''),
+    [courseId]
+  );
 
   const filteredResources = useMemo(() => {
     if (selectedFilter === 'all') return resources;
@@ -256,6 +260,14 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
     }
 
     window.location.assign(subjectDownloadUrl);
+  };
+
+  const handleMergedWeeklyPdfDownload = () => {
+    if (!downloadStatus.enabled || !mergedWeeklyPdfDownloadUrl) {
+      return;
+    }
+
+    window.location.assign(mergedWeeklyPdfDownloadUrl);
   };
 
   const handleCreatePost = async () => {
@@ -460,70 +472,82 @@ export default function CourseDiscussionBoard({ courseId, courseTitle, yearInsta
         </div>
       ) : null}
 
-      <section className="overflow-hidden rounded-3xl border border-blue-200 bg-gradient-to-r from-blue-50 via-white to-cyan-50 shadow-sm">
-        <div className="flex flex-col gap-5 px-6 py-6 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
-          <div className="max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-blue-700">
-              Pinned Download
-            </p>
-            <div className="mt-3 flex items-center gap-3">
-              <div className="rounded-2xl bg-blue-600 p-3 text-white shadow-sm">
-                <PackageOpen size={22} />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold text-slate-900">Download the full subject bundle</h2>
-                <p className="mt-1 text-sm leading-6 text-slate-600 sm:text-base">
-                  One ZIP file with the approved course discussion files plus every available week
-                  material arranged batch-wise with proper folders.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-semibold">
-              <span className="rounded-full border border-blue-200 bg-white px-3 py-1.5 text-blue-700">
-                Server flag: {downloadStatus.flag}
-              </span>
-              <span
-                className={`rounded-full px-3 py-1.5 ${
-                  downloadStatus.enabled
-                    ? 'bg-emerald-100 text-emerald-700'
-                    : 'bg-amber-100 text-amber-700'
-                }`}
-              >
-                {downloadStatus.enabled ? 'Download enabled' : 'Download disabled'}
-              </span>
-            </div>
-
-            {downloadStatus.error ? (
-              <p className="mt-3 text-sm text-red-600">{downloadStatus.error}</p>
-            ) : (
-              <p className="mt-3 text-sm text-slate-500">
-                Set `SUBJECT_DOWNLOAD_ENABLED=1` on the server to keep this active, or `0` to
-                disable it whenever needed.
+      {downloadStatus.enabled ? (
+        <section className="overflow-hidden rounded-3xl border border-blue-200 bg-gradient-to-r from-blue-50 via-white to-cyan-50 shadow-sm">
+          <div className="flex flex-col gap-5 px-6 py-6 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-blue-700">
+                Pinned Download
               </p>
-            )}
-          </div>
+              <div className="mt-3 flex items-center gap-3">
+                <div className="rounded-2xl bg-blue-600 p-3 text-white shadow-sm">
+                  <PackageOpen size={22} />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900">Download the full subject bundle</h2>
+                  <p className="mt-1 text-sm leading-6 text-slate-600 sm:text-base">
+                    Choose the regular folder-style download, or get one merged PDF per week with
+                    the source PDFs combined from latest batch to oldest batch.
+                  </p>
+                </div>
+              </div>
 
-          <div className="flex flex-col items-start gap-3 lg:items-end">
-            <button
-              type="button"
-              onClick={handleSubjectDownload}
-              disabled={downloadStatus.loading || !downloadStatus.enabled}
-              className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-            >
-              {downloadStatus.loading ? (
-                <Loader2 size={16} className="animate-spin" />
+              <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-semibold">
+                <span className="rounded-full border border-blue-200 bg-white px-3 py-1.5 text-blue-700">
+                  Server flag: {downloadStatus.flag}
+                </span>
+                <span className="rounded-full bg-emerald-100 px-3 py-1.5 text-emerald-700">
+                  Download enabled
+                </span>
+              </div>
+
+              {downloadStatus.error ? (
+                <p className="mt-3 text-sm text-red-600">{downloadStatus.error}</p>
               ) : (
-                <Download size={16} />
+                <p className="mt-3 text-sm text-slate-500">
+                  Set `SUBJECT_DOWNLOAD_ENABLED=1` on the server to keep this active, or `0` to
+                  disable it whenever needed.
+                </p>
               )}
-              Download complete subject
-            </button>
-            <p className="text-xs text-slate-500">
-              The ZIP is generated fresh from the current course discussion and week material data.
-            </p>
+            </div>
+
+            <div className="flex flex-col items-start gap-3 lg:items-end">
+              <div className="flex flex-wrap gap-3 lg:justify-end">
+                <button
+                  type="button"
+                  onClick={handleSubjectDownload}
+                  disabled={downloadStatus.loading || !downloadStatus.enabled}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {downloadStatus.loading ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Download size={16} />
+                  )}
+                  Regular download
+                </button>
+                <button
+                  type="button"
+                  onClick={handleMergedWeeklyPdfDownload}
+                  disabled={downloadStatus.loading || !downloadStatus.enabled}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-blue-200 bg-white px-5 py-3 text-sm font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                >
+                  {downloadStatus.loading ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Download size={16} />
+                  )}
+                  Merged week PDFs
+                </button>
+              </div>
+              <p className="max-w-sm text-xs text-slate-500 lg:text-right">
+                Regular download keeps the full folder structure. Merged week PDFs downloads one ZIP
+                containing `Week 01 Combined.pdf`, `Week 02 Combined.pdf`, and so on.
+              </p>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

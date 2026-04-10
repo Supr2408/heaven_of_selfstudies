@@ -17,6 +17,7 @@ const {
   proxyWeekMaterialPdf,
   getSubjectDownloadStatus,
   downloadSubjectBundle,
+  downloadMergedWeeklyPdfBundle,
 } = require('../controllers/yearInstanceController');
 const { protectRoute, authorize, optionalAuth } = require('../middleware/auth');
 
@@ -30,6 +31,7 @@ router.get('/year-instances/course/:courseId', getYearInstances);
 router.get('/year-instance/:id', optionalAuth, getYearInstance);
 router.get('/course/:courseId/subject-download/status', getSubjectDownloadStatus);
 router.get('/course/:courseId/subject-download', downloadSubjectBundle);
+router.get('/course/:courseId/subject-download/merged-weekly-pdfs', downloadMergedWeeklyPdfBundle);
 router.post('/year-instances', protectRoute, authorize('admin'), createYearInstance);
 router.put('/year-instances/:id', protectRoute, authorize('admin'), updateYearInstance);
 

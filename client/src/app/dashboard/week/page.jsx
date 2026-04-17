@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle, Check, ChevronDown, MessageCircle, X } from 'lucide-react';
 import WeekDetail from '@/components/WeekDetail';
@@ -8,12 +8,14 @@ import WeekDiscussions from '@/components/WeekDiscussions';
 import ChatRoom from '@/components/ChatRoom';
 import StudyTimeTracker from '@/components/StudyTimeTracker';
 import { yearInstanceAPI } from '@/lib/api';
+import { initializeSocket, joinWeekPresence, leaveWeekPresence } from '@/lib/socket';
 import {
   getAvailabilityMeta,
   hasWeekStudyContent,
   normalizeVisibleWeeks,
   summarizeWeeksAvailability,
 } from '@/lib/contentAvailability';
+import { getPublicUserName } from '@/lib/user';
 import useStore from '@/store/useStore';
 
 const getCourseId = (yearInstance) =>
@@ -50,11 +52,15 @@ const getBatchLabel = (instance) => {
 function WeekPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { selectedYear, setSelectedWeek, setSelectedYear } = useStore((state) => ({
-    selectedYear: state.selectedYear,
-    setSelectedWeek: state.setSelectedWeek,
-    setSelectedYear: state.setSelectedYear,
-  }));
+  const { user, isAuthenticated, selectedYear, setSelectedWeek, setSelectedYear, setOnlineUsers } =
+    useStore((state) => ({
+      user: state.user,
+      isAuthenticated: state.isAuthenticated,
+      selectedYear: state.selectedYear,
+      setSelectedWeek: state.setSelectedWeek,
+      setSelectedYear: state.setSelectedYear,
+      setOnlineUsers: state.setOnlineUsers,
+    }));
 
   const weekId = searchParams?.get('weekId') || '';
   const yearInstanceIdFromQuery = searchParams?.get('yearInstanceId') || '';
@@ -69,6 +75,9 @@ function WeekPageContent() {
   const [error, setError] = useState('');
   const [chatOpen, setChatOpen] = useState(false);
   const [batchMenuOpen, setBatchMenuOpen] = useState(false);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [chatActivityLabel, setChatActivityLabel] = useState('');
+  const chatOpenRef = useRef(false);
 
   const activeWeek = week?._id && week._id === weekId ? week : null;
 
@@ -249,6 +258,7 @@ function WeekPageContent() {
 
   const roomCourseId = courseId || 'nptel-course';
   const roomYear = activeYearInstance?.year || activeWeek?.yearInstanceId?.year || new Date().getFullYear();
+  const roomId = activeWeek?._id ? `${roomCourseId}_${roomYear}_${activeWeek._id}` : '';
   const trackedCourseTitle = activeYearInstance?.courseId?.title || '';
   const trackedCourseId = courseId || '';
   const trackedRoutePath =
@@ -303,6 +313,67 @@ function WeekPageContent() {
   );
   const activeBatchMeta = getAvailabilityMeta(activeBatchSummary.status);
   const pageLoading = !week && (loading || (loadingWeeks && Boolean(activeYearInstanceId)));
+  const unreadChatBadge = unreadChatCount > 99 ? '99+' : `${unreadChatCount}`;
+
+  useEffect(() => {
+    chatOpenRef.current = chatOpen;
+  }, [chatOpen]);
+
+  useEffect(() => {
+    if (!chatOpen) return;
+    setUnreadChatCount(0);
+    setChatActivityLabel('');
+  }, [chatOpen]);
+
+  useEffect(() => {
+    setUnreadChatCount(0);
+    setChatActivityLabel('');
+  }, [activeWeek?._id]);
+
+  useEffect(() => {
+    if (!activeWeek?._id || !roomId || !isAuthenticated || !user?._id) {
+      setOnlineUsers(0);
+      return undefined;
+    }
+
+    const socket = initializeSocket(getPublicUserName(user));
+
+    const handleConnect = () => {
+      joinWeekPresence(roomId, activeWeek._id, user._id);
+    };
+
+    const handleRoomStats = ({ onlineUsers: count }) => {
+      setOnlineUsers(Math.max(Number(count) || 0, 1));
+    };
+
+    const handleNewMessage = (message) => {
+      if (chatOpenRef.current) {
+        return;
+      }
+
+      setUnreadChatCount((current) => Math.min(current + 1, 999));
+      const senderName = getPublicUserName(message?.userId);
+      setChatActivityLabel(
+        senderName ? `${senderName} sent a new quick chat message.` : 'New quick chat activity.'
+      );
+    };
+
+    socket.on('connect', handleConnect);
+    socket.on('room-stats', handleRoomStats);
+    socket.on('new-message', handleNewMessage);
+
+    if (socket.connected) {
+      handleConnect();
+    }
+
+    return () => {
+      socket.off('connect', handleConnect);
+      socket.off('room-stats', handleRoomStats);
+      socket.off('new-message', handleNewMessage);
+      leaveWeekPresence();
+      setOnlineUsers(0);
+    };
+  }, [activeWeek?._id, isAuthenticated, roomId, setOnlineUsers, user]);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-24 sm:space-y-8">
@@ -498,14 +569,37 @@ function WeekPageContent() {
             </div>
           ) : null}
 
-          <button
-            onClick={() => setChatOpen((state) => !state)}
-            className="fixed bottom-4 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-xl shadow-blue-500/30 transition hover:scale-[1.03] hover:shadow-2xl sm:bottom-6 sm:right-6 sm:h-16 sm:w-16"
-            aria-label={chatOpen ? 'Hide quick chat' : 'Open quick chat'}
-            title="Quick chat"
-          >
-            <MessageCircle size={24} />
-          </button>
+          <div className="fixed bottom-4 right-4 z-40 flex flex-col items-end gap-3 sm:bottom-6 sm:right-6">
+            {!chatOpen && chatActivityLabel ? (
+              <button
+                type="button"
+                onClick={() => setChatOpen(true)}
+                className="max-w-[260px] rounded-2xl border border-cyan-200 bg-white/95 px-4 py-3 text-right text-sm text-slate-700 shadow-lg shadow-slate-900/10 backdrop-blur"
+              >
+                <p className="font-semibold text-cyan-700">
+                  {unreadChatCount > 1 ? `${unreadChatBadge} new messages` : 'New quick chat message'}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{chatActivityLabel}</p>
+              </button>
+            ) : null}
+
+            <button
+              onClick={() => setChatOpen((state) => !state)}
+              className="relative flex h-14 w-14 items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-xl shadow-blue-500/30 transition hover:scale-[1.03] hover:shadow-2xl sm:h-16 sm:w-16"
+              aria-label={chatOpen ? 'Hide quick chat' : 'Open quick chat'}
+              title="Quick chat"
+            >
+              {!chatOpen && unreadChatCount > 0 ? (
+                <>
+                  <span className="absolute inset-0 rounded-full bg-cyan-300/50 animate-ping" />
+                  <span className="absolute -right-1 -top-1 inline-flex min-h-6 min-w-6 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white shadow-lg">
+                    {unreadChatBadge}
+                  </span>
+                </>
+              ) : null}
+              <MessageCircle size={24} />
+            </button>
+          </div>
         </>
       ) : null}
     </div>

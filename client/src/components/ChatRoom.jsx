@@ -166,7 +166,6 @@ export default function ChatRoom({ weekId, courseId, year, weekNumber, onOpenDis
       socket.off('report-success', handleReportSuccess);
       leaveRoom();
       setMessages([]);
-      setOnlineUsers(0);
     };
   }, [
     addMessage,

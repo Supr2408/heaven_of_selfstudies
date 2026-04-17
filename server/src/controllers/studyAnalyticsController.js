@@ -136,6 +136,7 @@ exports.getInternalPresenceSummary = catchAsync(async (req, res, next) => {
         authProvider: user.authProvider || 'guest',
         avatar: user.avatar || null,
         connectionCount: entry.connectionCount || 1,
+        ipAddress: sanitizeText(entry.ipAddress || '', 80),
       };
     })
     .filter(Boolean)

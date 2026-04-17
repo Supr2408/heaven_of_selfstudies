@@ -76,6 +76,16 @@ export const joinRoom = (roomId, weekId, userId) => {
   });
 };
 
+export const joinWeekPresence = (roomId, weekId, userId) => {
+  if (!socket?.connected) return;
+
+  socket.emit('join-week-presence', {
+    roomId,
+    weekId,
+    userId,
+  });
+};
+
 /**
  * Send message
  */
@@ -162,6 +172,12 @@ export const leaveRoom = () => {
   socket.emit('leave-room');
 };
 
+export const leaveWeekPresence = () => {
+  if (!socket?.connected) return;
+
+  socket.emit('leave-week-presence');
+};
+
 /**
  * Close socket connection
  */
@@ -172,4 +188,10 @@ export const disconnectSocket = () => {
   }
 };
 
-export default { initializeSocket, getSocket, joinRoom, sendMessage };
+export default {
+  initializeSocket,
+  getSocket,
+  joinRoom,
+  joinWeekPresence,
+  sendMessage,
+};

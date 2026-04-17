@@ -18,6 +18,32 @@ const roomPresence = new Map();
 const userCooldowns = new Map();
 const globalPresence = new Map();
 
+function getWeekPresenceChannel(roomId) {
+  return `presence:${roomId}`;
+}
+
+function normalizeIpAddress(value = '') {
+  return String(value || '')
+    .trim()
+    .replace(/^::ffff:/, '')
+    .replace(/^\[|\]$/g, '');
+}
+
+function getSocketIpAddress(socket) {
+  const forwardedFor = String(socket.handshake?.headers?.['x-forwarded-for'] || '')
+    .split(',')
+    .map((item) => item.trim())
+    .find(Boolean);
+  const rawIp =
+    String(socket.handshake?.headers?.['cf-connecting-ip'] || '').trim() ||
+    forwardedFor ||
+    String(socket.handshake?.headers?.['x-real-ip'] || '').trim() ||
+    String(socket.handshake?.address || '').trim() ||
+    String(socket.request?.socket?.remoteAddress || '').trim();
+
+  return normalizeIpAddress(rawIp);
+}
+
 function validateRoomFormat(roomId) {
   return /^[a-zA-Z0-9\-_]+_\d{4}_[a-zA-Z0-9\-_]+$/.test(roomId);
 }
@@ -56,23 +82,67 @@ function decrementPresence(roomId, userId) {
   }
 }
 
+function cleanupWeekPresence(io, socket) {
+  const presence = socket.weekPresenceData;
+  if (!presence?.roomId || !presence?.userId) return;
+
+  socket.leave(getWeekPresenceChannel(presence.roomId));
+  decrementPresence(presence.roomId, presence.userId);
+  socket.weekPresenceData = null;
+  emitRoomStats(io, presence.roomId);
+}
+
 function emitRoomStats(io, roomId) {
   const onlineUsers = roomPresence.get(roomId)?.size || 0;
-  io.to(roomId).emit('room-stats', { onlineUsers });
+  io
+    .to(roomId)
+    .to(getWeekPresenceChannel(roomId))
+    .emit('room-stats', { onlineUsers });
 }
 
-function incrementGlobalPresence(userId) {
-  globalPresence.set(userId, (globalPresence.get(userId) || 0) + 1);
+function incrementGlobalPresence(userId, ipAddress = '') {
+  const existing = globalPresence.get(userId) || {
+    connectionCount: 0,
+    ipCounts: new Map(),
+  };
+  const normalizedIp = normalizeIpAddress(ipAddress);
+  const nextIpCounts = new Map(existing.ipCounts || []);
+
+  existing.connectionCount += 1;
+  if (normalizedIp) {
+    nextIpCounts.set(normalizedIp, (nextIpCounts.get(normalizedIp) || 0) + 1);
+  }
+
+  globalPresence.set(userId, {
+    connectionCount: existing.connectionCount,
+    ipCounts: nextIpCounts,
+  });
 }
 
-function decrementGlobalPresence(userId) {
+function decrementGlobalPresence(userId, ipAddress = '') {
   if (!globalPresence.has(userId)) return;
 
-  const nextCount = (globalPresence.get(userId) || 0) - 1;
+  const existing = globalPresence.get(userId);
+  const nextCount = (existing?.connectionCount || 0) - 1;
   if (nextCount <= 0) {
     globalPresence.delete(userId);
   } else {
-    globalPresence.set(userId, nextCount);
+    const normalizedIp = normalizeIpAddress(ipAddress);
+    const nextIpCounts = new Map(existing?.ipCounts || []);
+
+    if (normalizedIp && nextIpCounts.has(normalizedIp)) {
+      const nextIpCount = (nextIpCounts.get(normalizedIp) || 0) - 1;
+      if (nextIpCount <= 0) {
+        nextIpCounts.delete(normalizedIp);
+      } else {
+        nextIpCounts.set(normalizedIp, nextIpCount);
+      }
+    }
+
+    globalPresence.set(userId, {
+      connectionCount: nextCount,
+      ipCounts: nextIpCounts,
+    });
   }
 }
 
@@ -87,10 +157,16 @@ function getGlobalPresenceCount() {
 }
 
 function getGlobalPresenceSnapshot() {
-  return [...globalPresence.entries()].map(([userId, connectionCount]) => ({
-    userId,
-    connectionCount,
-  }));
+  return [...globalPresence.entries()].map(([userId, presence = {}]) => {
+    const ipAddress = [...(presence.ipCounts?.entries() || [])]
+      .sort((left, right) => right[1] - left[1])[0]?.[0] || '';
+
+    return {
+      userId,
+      connectionCount: presence.connectionCount || 0,
+      ipAddress,
+    };
+  });
 }
 
 function cleanupSession(io, socket) {
@@ -98,9 +174,7 @@ function cleanupSession(io, socket) {
   if (!session) return;
 
   socket.leave(session.roomId);
-  decrementPresence(session.roomId, session.userId);
   socketSessions.delete(socket.id);
-  emitRoomStats(io, session.roomId);
 }
 
 function getCooldownRemaining(userId, roomId) {
@@ -166,10 +240,12 @@ async function authenticateSocketUser(socket) {
 async function ensureGlobalPresence(io, socket) {
   const user = await authenticateSocketUser(socket);
   const userId = String(user._id);
+  const ipAddress = getSocketIpAddress(socket);
 
   if (!socket.globalPresenceUserId) {
     socket.globalPresenceUserId = userId;
-    incrementGlobalPresence(userId);
+    socket.globalPresenceIpAddress = ipAddress;
+    incrementGlobalPresence(userId, ipAddress);
   }
 
   emitGlobalPresence(io);
@@ -193,6 +269,41 @@ const initializeSocketIO = (io, socket) => {
     }
   });
 
+  socket.on('join-week-presence', async (data) => {
+    try {
+      const { roomId, weekId } = data || {};
+      const user = await authenticateSocketUser(socket);
+      const userId = String(user._id);
+
+      if (!roomId || !weekId || !validateRoomFormat(roomId)) {
+        socket.emit('chat-error', { message: 'Invalid room details.' });
+        return;
+      }
+
+      if (
+        socket.weekPresenceData?.roomId === roomId &&
+        socket.weekPresenceData?.userId === userId
+      ) {
+        emitRoomStats(io, roomId);
+        return;
+      }
+
+      cleanupWeekPresence(io, socket);
+
+      socket.join(getWeekPresenceChannel(roomId));
+      socket.weekPresenceData = { roomId, weekId, userId };
+      incrementPresence(roomId, userId);
+      emitRoomStats(io, roomId);
+    } catch (error) {
+      console.error('Error joining week presence:', error);
+      socket.emit('chat-error', { message: 'Unable to initialize week presence.' });
+    }
+  });
+
+  socket.on('leave-week-presence', () => {
+    cleanupWeekPresence(io, socket);
+  });
+
   socket.on('join-room', async (data) => {
     try {
       const { roomId, weekId } = data || {};
@@ -210,8 +321,6 @@ const initializeSocketIO = (io, socket) => {
       socket.join(roomId);
       socket.userData = { roomId, weekId, userId: String(user._id) };
       socketSessions.set(socket.id, { roomId, weekId, userId: String(user._id) });
-      incrementPresence(roomId, String(user._id));
-      emitRoomStats(io, roomId);
 
       const cutoff = new Date(Date.now() - CHAT_RETENTION_MS);
       const messages = await Message.find({
@@ -317,13 +426,16 @@ const initializeSocketIO = (io, socket) => {
       }
 
       startCooldown(String(userId), roomId);
-      io.to(roomId).emit('new-message', {
+      io
+        .to(roomId)
+        .to(getWeekPresenceChannel(roomId))
+        .emit('new-message', {
         _id: message._id,
         userId: message.userId,
         content: message.content,
         repliedTo: message.repliedTo,
         timestamp: message.timestamp,
-      });
+        });
 
       socket.emit('cooldown-update', { remainingSeconds: 30 });
     } catch (error) {
@@ -373,7 +485,10 @@ const initializeSocketIO = (io, socket) => {
       if (message.isDeleted) {
         const session = socket.userData || {};
         if (session.roomId) {
-          io.to(session.roomId).emit('message-removed', { messageId: String(message._id) });
+          io
+            .to(session.roomId)
+            .to(getWeekPresenceChannel(session.roomId))
+            .emit('message-removed', { messageId: String(message._id) });
         }
       }
 
@@ -390,10 +505,12 @@ const initializeSocketIO = (io, socket) => {
 
   socket.on('disconnect', () => {
     if (socket.globalPresenceUserId) {
-      decrementGlobalPresence(socket.globalPresenceUserId);
+      decrementGlobalPresence(socket.globalPresenceUserId, socket.globalPresenceIpAddress);
       socket.globalPresenceUserId = null;
+      socket.globalPresenceIpAddress = null;
       emitGlobalPresence(io);
     }
+    cleanupWeekPresence(io, socket);
     cleanupSession(io, socket);
   });
 };

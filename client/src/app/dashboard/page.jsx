@@ -174,7 +174,7 @@ export default function Dashboard() {
               <div className="mt-6 flex flex-wrap gap-3">
                 <Link
                   href="/courses"
-                  className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-sky-300 to-white px-5 py-3 text-sm font-semibold text-slate-950 shadow-[0_12px_30px_-16px_rgba(125,211,252,0.9)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_45px_-18px_rgba(125,211,252,0.9)]"
+                  className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-sky-300 to-white px-5 py-3 text-sm font-semibold text-[#08111f] shadow-[0_12px_30px_-16px_rgba(125,211,252,0.9)] transition hover:-translate-y-0.5 hover:text-[#08111f] hover:shadow-[0_20px_45px_-18px_rgba(125,211,252,0.9)]"
                 >
                   <Sparkles size={16} />
                   Explore courses

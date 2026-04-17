@@ -67,9 +67,11 @@ export default function MainLayout({ children }) {
   const setSidebarOpen = useStore((state) => state.setSidebarOpen);
   const globalActiveUsers = useStore((state) => state.globalActiveUsers);
   const setGlobalActiveUsers = useStore((state) => state.setGlobalActiveUsers);
+  const currentTheme = useStore((state) => state.currentTheme);
   const publicName = getPublicUserName(store.user);
   const canParticipate = isGoogleUser(store.user);
   const isGuestUser = isGuestLikeUser(store.user);
+  const isDarkTheme = currentTheme === 'dark';
   const aliasLocked = Boolean(store.user?.displayNameLocked);
   const hasCustomAlias = Boolean(store.user?.displayName?.trim());
   const originalGoogleName = store.user?.name?.trim() || 'your original Google name';
@@ -354,7 +356,9 @@ export default function MainLayout({ children }) {
   const userInitial = publicName?.charAt(0)?.toUpperCase() || 'N';
   const studyProgressPercent = clampPercent(studySummary?.progressPercent);
   const studyRingStyle = {
-    background: `conic-gradient(rgb(37 99 235) ${studyProgressPercent}%, rgb(226 232 240) ${studyProgressPercent}% 100%)`,
+    background: `conic-gradient(rgb(37 99 235) ${studyProgressPercent}%, ${
+      isDarkTheme ? 'rgb(51 65 85)' : 'rgb(226 232 240)'
+    } ${studyProgressPercent}% 100%)`,
   };
   const topStudyCourse = studySummary?.courses?.[0] || null;
 

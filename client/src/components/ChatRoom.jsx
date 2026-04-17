@@ -51,6 +51,7 @@ export default function ChatRoom({ weekId, courseId, year, weekNumber, onOpenDis
     isAuthenticated,
     messages,
     onlineUsers,
+    currentTheme,
     setMessages,
     addMessage,
     deleteMessage,
@@ -60,6 +61,7 @@ export default function ChatRoom({ weekId, courseId, year, weekNumber, onOpenDis
     isAuthenticated: state.isAuthenticated,
     messages: state.messages,
     onlineUsers: state.onlineUsers,
+    currentTheme: state.currentTheme,
     setMessages: state.setMessages,
     addMessage: state.addMessage,
     deleteMessage: state.deleteMessage,
@@ -74,6 +76,7 @@ export default function ChatRoom({ weekId, courseId, year, weekNumber, onOpenDis
   const [showEntryPrompt, setShowEntryPrompt] = useState(true);
   const messagesEndRef = useRef(null);
   const canUseQuickChat = isGoogleUser(user);
+  const isDarkTheme = currentTheme === 'dark';
 
   const roomId = `${courseId}_${year}_${weekId}`;
 
@@ -259,38 +262,62 @@ export default function ChatRoom({ weekId, courseId, year, weekNumber, onOpenDis
   if (showEntryPrompt) {
     return (
       <div className="bg-white p-5">
-        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+        <div
+          className={`rounded-3xl border p-5 ${
+            isDarkTheme
+              ? 'border-slate-700 bg-slate-900/90 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.9)]'
+              : 'border-slate-200 bg-slate-50'
+          }`}
+        >
           <div className="flex items-start gap-3">
-            <div className="rounded-2xl bg-amber-100 p-3 text-amber-700">
+            <div
+              className={`rounded-2xl p-3 ${
+                isDarkTheme ? 'bg-amber-500/20 text-amber-200' : 'bg-amber-100 text-amber-700'
+              }`}
+            >
               <AlertTriangle size={20} />
             </div>
             <div>
               <p className="text-base font-semibold text-slate-900">Check discussion board first</p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
+              <p className={`mt-2 text-sm leading-6 ${isDarkTheme ? 'text-slate-300' : 'text-slate-600'}`}>
                 Quick chat is only for short live discussion. For notes, links, solutions, or anything that should stay saved, please use the discussion board first and then come here if you still need instant help.
               </p>
               {!canUseQuickChat ? (
-                <p className="mt-3 text-sm font-medium text-blue-700">
+                <p className={`mt-3 text-sm font-medium ${isDarkTheme ? 'text-cyan-200' : 'text-blue-700'}`}>
                   Guest access is read-only here. Sign in with Google if you want to send messages.
                 </p>
               ) : null}
             </div>
           </div>
 
-          <div className="mt-5 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+          <div
+            className={`mt-5 rounded-2xl border px-4 py-3 text-sm ${
+              isDarkTheme
+                ? 'border-slate-700 bg-slate-950/80 text-slate-300'
+                : 'border-slate-200 bg-white text-slate-600'
+            }`}
+          >
             Quick chat rules: no links, no phone numbers, no personal contact details, and no WhatsApp/Telegram/group promotion.
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
             <button
               onClick={() => onOpenDiscussion?.()}
-              className="rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+              className={`rounded-2xl border px-4 py-3 text-sm font-semibold transition ${
+                isDarkTheme
+                  ? 'border-slate-600 text-slate-100 hover:bg-slate-800'
+                  : 'border-slate-300 text-slate-700 hover:bg-slate-100'
+              }`}
             >
               Open discussion board
             </button>
             <button
               onClick={() => setShowEntryPrompt(false)}
-              className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+              className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                isDarkTheme
+                  ? 'bg-cyan-300 text-slate-950 hover:bg-cyan-200'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
             >
               {canUseQuickChat ? 'Continue to quick chat' : 'View quick chat'}
             </button>

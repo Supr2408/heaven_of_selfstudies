@@ -8,6 +8,7 @@ export default function ThemeToggle({ className = '', compact = false }) {
   const setTheme = useStore((state) => state.setTheme);
   const isDarkTheme = currentTheme === 'dark';
   const nextTheme = isDarkTheme ? 'light' : 'dark';
+  const visibleThemeLabel = isDarkTheme ? 'Dark' : 'Light';
 
   return (
     <button
@@ -18,7 +19,7 @@ export default function ThemeToggle({ className = '', compact = false }) {
       title={`Switch to ${nextTheme} theme`}
     >
       {isDarkTheme ? <SunMedium size={16} /> : <Moon size={16} />}
-      {compact ? null : <span className="hidden sm:inline">{isDarkTheme ? 'Light mode' : 'Dark mode'}</span>}
+      <span className={compact ? 'hidden sm:inline' : ''}>{visibleThemeLabel}</span>
     </button>
   );
 }

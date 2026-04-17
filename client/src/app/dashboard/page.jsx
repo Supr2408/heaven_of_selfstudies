@@ -3,10 +3,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, BookOpen, Clock3, Library, Search, Sparkles } from 'lucide-react';
+import { ArrowRight, Sparkles } from 'lucide-react';
 import { yearInstanceAPI } from '@/lib/api';
-import { getPublicUserName } from '@/lib/user';
-import useStore from '@/store/useStore';
+import { readLastViewedCourse } from '@/lib/recentCourse';
 import DashboardMissionPanel from '@/components/DashboardMissionPanel';
 
 const decodeHtmlEntities = (value) => {
@@ -32,30 +31,41 @@ const getCourseTitle = (instance) =>
     instance?.courseId?.title || instance?.courseId?.courseName || instance?.courseId?.name || ''
   ) || 'NPTEL Course';
 
+const getRecentWeek = (instance, recentCourse) => {
+  if (!instance || !recentCourse?.weekId) {
+    return null;
+  }
+
+  return (instance?.weeks || []).find((week) => week?._id === recentCourse.weekId) || null;
+};
+
 const getFirstOpenableWeek = (instance) => {
   const weeks = [...(instance?.weeks || [])].sort((a, b) => (a.weekNumber || 0) - (b.weekNumber || 0));
   return weeks.find((week) => (week?.materials || []).length > 0) || weeks[0] || null;
 };
 
-const getWeekTitle = (week) => {
+const getWeekTitle = (week, fallbackTitle = '') => {
   if (!week) {
-    return 'Saved weeks ready';
+    return fallbackTitle || 'Saved weeks ready';
   }
 
-  return week?.title || (week?.weekNumber ? `Week ${week.weekNumber}` : 'Saved weeks ready');
+  return (
+    week?.title ||
+    fallbackTitle ||
+    (week?.weekNumber ? `Week ${week.weekNumber}` : 'Saved weeks ready')
+  );
 };
-
-const getInstanceMeta = (instance) =>
-  [instance?.year, instance?.semester, decodeHtmlEntities(instance?.courseId?.courseCode || '') || 'NPTEL run']
-    .filter(Boolean)
-    .join(' / ');
 
 export default function Dashboard() {
   const router = useRouter();
-  const learnerName = useStore((state) => getPublicUserName(state.user));
   const [yearInstances, setYearInstances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [recentCourse, setRecentCourse] = useState(null);
+
+  useEffect(() => {
+    setRecentCourse(readLastViewedCourse());
+  }, []);
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -85,35 +95,41 @@ export default function Dashboard() {
     [yearInstances]
   );
 
-  const courseCount = useMemo(
-    () => new Set(orderedInstances.map((instance) => getCourseId(instance)).filter(Boolean)).size,
-    [orderedInstances]
-  );
+  const continueInstance = useMemo(() => {
+    if (!orderedInstances.length) {
+      return null;
+    }
 
-  const totalWeeks = useMemo(
-    () => orderedInstances.reduce((sum, instance) => sum + (instance?.totalWeeks || 0), 0),
-    [orderedInstances]
-  );
+    if (!recentCourse) {
+      return orderedInstances[0];
+    }
 
-  const continueInstance = orderedInstances[0] || null;
-  const continueWeek = getFirstOpenableWeek(continueInstance);
-  const greetingName = learnerName || 'Learner';
+    return (
+      orderedInstances.find((instance) => instance?._id === recentCourse.yearInstanceId) ||
+      orderedInstances.find((instance) => getCourseId(instance) === recentCourse.courseId) ||
+      orderedInstances[0]
+    );
+  }, [orderedInstances, recentCourse]);
 
-  const openRun = (instance) => {
-    const firstWeek = getFirstOpenableWeek(instance);
-    if (firstWeek?._id) {
-      router.push(`/dashboard/week?weekId=${firstWeek._id}`);
+  const continueWeek = useMemo(() => {
+    const recentWeek = getRecentWeek(continueInstance, recentCourse);
+    return recentWeek || getFirstOpenableWeek(continueInstance);
+  }, [continueInstance, recentCourse]);
+
+  const openRun = (instance, preferredWeekId = '') => {
+    const targetWeek =
+      (preferredWeekId && (instance?.weeks || []).find((week) => week?._id === preferredWeekId)) ||
+      getFirstOpenableWeek(instance);
+
+    if (targetWeek?._id) {
+      router.push(`/dashboard/week?weekId=${targetWeek._id}`);
       return;
     }
+
     if (instance?._id) {
       router.push(`/dashboard/week?yearInstanceId=${instance._id}`);
     }
   };
-
-  const overviewStats = [
-    { label: 'Courses saved', value: courseCount },
-    { label: 'Weeks available', value: totalWeeks },
-  ];
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -149,7 +165,9 @@ export default function Dashboard() {
                   <p className="mt-2 text-xl font-semibold text-white">
                     {getCourseTitle(continueInstance)}
                   </p>
-                  <p className="mt-2 text-sm text-slate-300">{getWeekTitle(continueWeek)}</p>
+                  <p className="mt-2 text-sm text-slate-300">
+                    {getWeekTitle(continueWeek, recentCourse?.weekTitle)}
+                  </p>
                 </div>
               ) : null}
 
@@ -164,7 +182,7 @@ export default function Dashboard() {
                 </Link>
                 {continueInstance ? (
                   <button
-                    onClick={() => openRun(continueInstance)}
+                    onClick={() => openRun(continueInstance, recentCourse?.weekId)}
                     className="inline-flex items-center gap-2 rounded-2xl border border-white/15 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
                   >
                     Continue current course
@@ -174,7 +192,11 @@ export default function Dashboard() {
               </div>
 
               <p className="mt-4 text-sm text-slate-400">
-                Start with Explore courses to add a new subject, then come back here to continue.
+                {loading
+                  ? 'Checking your latest saved runs...'
+                  : continueInstance
+                    ? 'Your dashboard now follows the most recently opened course so you can jump back in faster.'
+                    : 'Start with Explore courses to add a new subject, then come back here to continue.'}
               </p>
             </div>
           </div>
@@ -186,152 +208,6 @@ export default function Dashboard() {
           {error}
         </div>
       ) : null}
-
-      <section className="grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-start gap-4">
-            <div className="rounded-2xl bg-slate-100 p-3 text-slate-700">
-              <BookOpen size={20} />
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">
-                Continue learning
-              </p>
-              <h2 className="mt-2 text-3xl font-semibold leading-tight text-slate-950">
-                Welcome back, {greetingName}
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Your next study step is kept simple here so you can jump straight into revision.
-              </p>
-            </div>
-          </div>
-
-          {continueInstance ? (
-            <div className="mt-6 rounded-[1.75rem] border border-slate-200 bg-slate-50/80 p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
-                Current course
-              </p>
-              <h3 className="mt-3 text-2xl font-semibold leading-tight text-slate-950">
-                {getCourseTitle(continueInstance)}
-              </h3>
-              <p className="mt-2 text-sm text-slate-500">{getInstanceMeta(continueInstance)}</p>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700">
-                  <Clock3 size={14} />
-                  {getWeekTitle(continueWeek)}
-                </div>
-                <div className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700">
-                  {continueInstance?.totalWeeks || 0} weeks saved
-                </div>
-              </div>
-
-              <p className="mt-4 text-sm leading-6 text-slate-600">
-                {continueWeek
-                  ? 'Start from the earliest week with material and move through your saved notes, assignments, and discussions without extra navigation.'
-                  : 'This run is ready in your library. Open it to browse the saved weeks and available materials.'}
-              </p>
-
-              <button
-                onClick={() => openRun(continueInstance)}
-                className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-              >
-                Open course
-                <ArrowRight size={16} />
-              </button>
-            </div>
-          ) : (
-            <div className="mt-6 rounded-[1.75rem] border border-dashed border-slate-300 bg-slate-50 p-6 text-sm leading-6 text-slate-600">
-              Add your first course from the community search page and your study library will show
-              up here.
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-start gap-4">
-            <div className="rounded-2xl bg-slate-100 p-3 text-slate-700">
-              <Library size={20} />
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">
-                Library overview
-              </p>
-              <h2 className="mt-2 text-2xl font-semibold text-slate-950">
-                Keep the library simple.
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                No extra run list here. Just a light summary and a clear way to explore more
-                courses.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-3 md:grid-cols-2">
-            {overviewStats.map((stat) => (
-              <div key={stat.label} className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  {stat.label}
-                </p>
-                <p className="mt-3 text-3xl font-semibold text-slate-950">{stat.value}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-6 rounded-[1.75rem] border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-sky-950 p-6 text-white">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-300">
-              Explore
-            </p>
-            <h3 className="mt-3 text-2xl font-semibold leading-tight">
-              Find the next course without scrolling through extra panels.
-            </h3>
-            <p className="mt-3 max-w-lg text-sm leading-6 text-slate-300">
-              Use the explore page to add a course, then this dashboard will keep your current
-              learning path ready on the left.
-            </p>
-
-            {loading ? (
-              <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
-                Loading your library...
-              </div>
-            ) : continueInstance ? (
-              <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
-                  Latest saved course
-                </p>
-                <p className="mt-2 text-lg font-medium text-white">
-                  {getCourseTitle(continueInstance)}
-                </p>
-                <p className="mt-1 text-sm text-slate-300">{getInstanceMeta(continueInstance)}</p>
-              </div>
-            ) : (
-              <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm leading-6 text-slate-300">
-                No course saved yet. Start with explore and build your library in a cleaner way.
-              </div>
-            )}
-
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Link
-                href="/courses"
-                className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 shadow-[0_12px_30px_-18px_rgba(255,255,255,0.9)] transition hover:-translate-y-0.5 hover:bg-slate-100"
-              >
-                <Search size={16} />
-                Explore courses
-                <ArrowRight size={16} />
-              </Link>
-              {continueInstance ? (
-                <button
-                  onClick={() => openRun(continueInstance)}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-white/15 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-                >
-                  Open current course
-                  <ArrowRight size={16} />
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      </section>
     </div>
   );
 }

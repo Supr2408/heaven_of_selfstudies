@@ -29,8 +29,10 @@ const ENABLE_STATISTICS_RUNS = 0;
 export default function CoursesPage() {
   const router = useRouter();
   const bumpContentVersion = useStore((state) => state.bumpContentVersion);
+  const currentTheme = useStore((state) => state.currentTheme);
   const user = useStore((state) => state.user);
   const hasGoogleAccess = isGoogleUser(user);
+  const isDarkTheme = currentTheme === 'dark';
 
   const [query, setQuery] = useState('');
   const [institute, setInstitute] = useState('');
@@ -324,16 +326,28 @@ export default function CoursesPage() {
   return (
     <MainLayout>
       <div className="space-y-8">
-        <section className="rounded-3xl border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,116,144,0.16),_transparent_38%),linear-gradient(135deg,#f8fafc_0%,#eef6ff_50%,#f8fafc_100%)] p-8 shadow-sm">
+        <section
+          className={`rounded-3xl border p-8 ${
+            isDarkTheme
+              ? 'border-slate-800 bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.22),_transparent_34%),linear-gradient(135deg,#020617_0%,#0f172a_48%,#082f49_100%)] shadow-[0_18px_45px_-28px_rgba(34,211,238,0.35)]'
+              : 'border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,116,144,0.16),_transparent_38%),linear-gradient(135deg,#f8fafc_0%,#eef6ff_50%,#f8fafc_100%)] shadow-sm'
+          }`}
+        >
           <div className="max-w-3xl space-y-4">
-            <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/80 px-4 py-1 text-sm font-medium text-sky-700">
+            <div
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-1 text-sm font-medium ${
+                isDarkTheme
+                  ? 'border-cyan-400/30 bg-slate-950/60 text-cyan-100'
+                  : 'border-sky-200 bg-white/80 text-sky-700'
+              }`}
+            >
               <Sparkles size={16} />
               Live NPTEL discovery
             </div>
-            <h1 className="text-4xl font-bold tracking-tight text-slate-900">
+            <h1 className={`text-4xl font-bold tracking-tight ${isDarkTheme ? 'text-white' : 'text-slate-900'}`}>
               Search any NPTEL course and bring its previous-year assignment solutions into the Hub
             </h1>
-            <p className="text-lg text-slate-600">
+            <p className={`text-lg ${isDarkTheme ? 'text-slate-300' : 'text-slate-600'}`}>
               Find a course, pull in its older assignment solutions from the NPTEL announcements,
               and create the same subject, batch, week, and solution-branch structure used by the
               existing Cloud Computing section.
@@ -341,24 +355,38 @@ export default function CoursesPage() {
           </div>
 
           <div className="mt-8 grid gap-3 lg:grid-cols-[minmax(0,1fr),260px,160px]">
-            <label className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+            <label
+              className={`rounded-2xl border px-4 py-3 ${
+                isDarkTheme
+                  ? 'border-slate-700 bg-slate-950/80 shadow-[0_14px_35px_-24px_rgba(15,23,42,0.9)]'
+                  : 'border-slate-200 bg-white shadow-sm'
+              }`}
+            >
+              <div className={`mb-2 text-xs font-semibold uppercase tracking-[0.18em] ${isDarkTheme ? 'text-slate-400' : 'text-slate-500'}`}>
                 Course Search
               </div>
               <div className="flex items-center gap-3">
-                <Search size={18} className="text-slate-400" />
+                <Search size={18} className={isDarkTheme ? 'text-slate-500' : 'text-slate-400'} />
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   onKeyDown={(event) => event.key === 'Enter' && handleSearch()}
                   placeholder="Natural Language Processing, Data Mining, Cloud Computing..."
-                  className="w-full border-0 bg-transparent p-0 text-slate-900 outline-none placeholder:text-slate-400"
+                  className={`w-full border-0 bg-transparent p-0 outline-none ${
+                    isDarkTheme ? 'text-white placeholder:text-slate-500' : 'text-slate-900 placeholder:text-slate-400'
+                  }`}
                 />
               </div>
             </label>
 
-            <label className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+            <label
+              className={`rounded-2xl border px-4 py-3 ${
+                isDarkTheme
+                  ? 'border-slate-700 bg-slate-950/80 shadow-[0_14px_35px_-24px_rgba(15,23,42,0.9)]'
+                  : 'border-slate-200 bg-white shadow-sm'
+              }`}
+            >
+              <div className={`mb-2 text-xs font-semibold uppercase tracking-[0.18em] ${isDarkTheme ? 'text-slate-400' : 'text-slate-500'}`}>
                 Institute Filter
               </div>
               <input
@@ -366,14 +394,20 @@ export default function CoursesPage() {
                 onChange={(event) => setInstitute(event.target.value)}
                 onKeyDown={(event) => event.key === 'Enter' && handleSearch()}
                 placeholder="IIT Kharagpur"
-                className="w-full border-0 bg-transparent p-0 text-slate-900 outline-none placeholder:text-slate-400"
+                className={`w-full border-0 bg-transparent p-0 outline-none ${
+                  isDarkTheme ? 'text-white placeholder:text-slate-500' : 'text-slate-900 placeholder:text-slate-400'
+                }`}
               />
             </label>
 
             <button
               onClick={handleSearch}
               disabled={searching}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-4 font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className={`inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-4 font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                isDarkTheme
+                  ? 'bg-white text-slate-950 hover:bg-slate-100'
+                  : 'bg-slate-900 text-white hover:bg-slate-800'
+              }`}
             >
               {searching ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
               Search

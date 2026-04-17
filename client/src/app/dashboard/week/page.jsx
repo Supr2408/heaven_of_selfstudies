@@ -15,6 +15,7 @@ import {
   normalizeVisibleWeeks,
   summarizeWeeksAvailability,
 } from '@/lib/contentAvailability';
+import { saveLastViewedCourse } from '@/lib/recentCourse';
 import { getPublicUserName } from '@/lib/user';
 import useStore from '@/store/useStore';
 
@@ -374,6 +375,27 @@ function WeekPageContent() {
       setOnlineUsers(0);
     };
   }, [activeWeek?._id, isAuthenticated, roomId, setOnlineUsers, user]);
+
+  useEffect(() => {
+    const sourceInstance = activeYearInstance || activeWeek?.yearInstanceId;
+    const recentCourseId = getCourseId(sourceInstance);
+    const recentCourseTitle = sourceInstance?.courseId?.title || '';
+    const recentYearInstanceId = sourceInstance?._id || activeYearInstanceId;
+
+    if (!recentCourseId || !recentYearInstanceId) {
+      return;
+    }
+
+    saveLastViewedCourse({
+      courseId: recentCourseId,
+      courseTitle: recentCourseTitle,
+      yearInstanceId: recentYearInstanceId,
+      year: sourceInstance?.year,
+      semester: sourceInstance?.semester,
+      weekId: activeWeek?._id || '',
+      weekTitle: activeWeek?.title || '',
+    });
+  }, [activeWeek?._id, activeWeek?.title, activeYearInstance, activeYearInstanceId]);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-24 sm:space-y-8">

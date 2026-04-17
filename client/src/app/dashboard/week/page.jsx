@@ -53,11 +53,12 @@ const getBatchLabel = (instance) => {
 function WeekPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, isAuthenticated, selectedYear, setSelectedWeek, setSelectedYear, setOnlineUsers } =
+  const { user, isAuthenticated, selectedYear, currentTheme, setSelectedWeek, setSelectedYear, setOnlineUsers } =
     useStore((state) => ({
       user: state.user,
       isAuthenticated: state.isAuthenticated,
       selectedYear: state.selectedYear,
+      currentTheme: state.currentTheme,
       setSelectedWeek: state.setSelectedWeek,
       setSelectedYear: state.setSelectedYear,
       setOnlineUsers: state.setOnlineUsers,
@@ -79,6 +80,7 @@ function WeekPageContent() {
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [chatActivityLabel, setChatActivityLabel] = useState('');
   const chatOpenRef = useRef(false);
+  const isDarkTheme = currentTheme === 'dark';
 
   const activeWeek = week?._id && week._id === weekId ? week : null;
 
@@ -429,7 +431,13 @@ function WeekPageContent() {
             yearInstance={activeYearInstance || activeWeek?.yearInstanceId}
             onPdfLoadError={refreshCurrentWeek}
             navigationSlot={
-              <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <section
+                className={`rounded-3xl border p-4 shadow-sm sm:p-5 ${
+                  isDarkTheme
+                    ? 'border-slate-700 bg-[linear-gradient(180deg,rgba(15,23,42,0.98)_0%,rgba(17,24,39,0.94)_100%)] shadow-[0_28px_55px_-35px_rgba(15,23,42,0.95)]'
+                    : 'border-slate-200 bg-white'
+                }`}
+              >
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
@@ -446,7 +454,9 @@ function WeekPageContent() {
                       <button
                         type="button"
                         onClick={() => setBatchMenuOpen((state) => !state)}
-                        className={`flex w-full items-center justify-between rounded-2xl border bg-white px-4 py-3 text-left text-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 ${activeBatchMeta.badgeClass}`}
+                        className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 ${
+                          isDarkTheme ? 'bg-slate-900/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]' : 'bg-white'
+                        } ${activeBatchMeta.badgeClass}`}
                       >
                         <span className="inline-flex min-w-0 items-center gap-2">
                           <span className={`h-3 w-3 rounded-full ${activeBatchMeta.dotClass}`} />
@@ -464,7 +474,11 @@ function WeekPageContent() {
                       </button>
 
                       {batchMenuOpen ? (
-                        <div className="absolute z-20 mt-2 max-h-80 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                        <div
+                          className={`absolute z-20 mt-2 max-h-80 w-full overflow-y-auto rounded-2xl border p-2 shadow-xl ${
+                            isDarkTheme ? 'border-slate-700 bg-slate-950/98' : 'border-slate-200 bg-white'
+                          }`}
+                        >
                           {displayedInstances.map((instance) => {
                             const summary = summarizeWeeksAvailability(weeksByInstance[instance._id] || []);
                             const meta = getAvailabilityMeta(summary.status);
@@ -478,7 +492,9 @@ function WeekPageContent() {
                                 className={`mb-1 flex w-full items-center justify-between rounded-xl border px-3 py-3 text-left text-sm transition last:mb-0 ${
                                   isSelected
                                     ? `${meta.badgeClass} shadow-sm`
-                                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                                    : isDarkTheme
+                                      ? 'border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800'
+                                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                                 }`}
                               >
                                 <span className="inline-flex min-w-0 items-center gap-2">
@@ -501,14 +517,20 @@ function WeekPageContent() {
                 </div>
 
                 <div className="mt-5 overflow-x-auto pb-1">
-                  <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div
+                    className={`mb-4 rounded-2xl border p-4 ${
+                      isDarkTheme
+                        ? 'border-slate-700 bg-slate-900/75'
+                        : 'border-slate-200 bg-slate-50'
+                    }`}
+                  >
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                       <div>
                         <p className="text-sm font-semibold text-slate-900">
                           Material availability for this batch
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
-                          Green means content exists for all weeks in this batch, yellow means some weeks still miss content, and red means the batch is still empty.
+                          Green means content exists for all weeks in this batch, no color means some weeks still miss content, and red means the batch is still empty.
                         </p>
                       </div>
                       <div
@@ -530,10 +552,16 @@ function WeekPageContent() {
                           onClick={() => openWeek(item.id)}
                           className={`rounded-2xl border px-4 py-2.5 text-sm font-semibold transition sm:px-5 sm:py-3 ${
                             item.active
-                              ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
+                              ? isDarkTheme
+                                ? 'border-blue-400 bg-gradient-to-r from-blue-600 to-indigo-500 text-white shadow-[0_12px_28px_-18px_rgba(59,130,246,0.9)]'
+                                : 'border-blue-600 bg-blue-600 text-white shadow-sm'
                               : item.hasContent
-                                ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100'
-                                : 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100'
+                                ? isDarkTheme
+                                  ? 'border-emerald-400/50 bg-emerald-500/8 text-emerald-200 hover:border-emerald-300 hover:bg-emerald-500/14'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100'
+                                : isDarkTheme
+                                  ? 'border-rose-400/45 bg-rose-500/8 text-rose-200 hover:border-rose-300 hover:bg-rose-500/14'
+                                  : 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100'
                           }`}
                         >
                           <span className="inline-flex items-center gap-2">
@@ -607,7 +635,11 @@ function WeekPageContent() {
 
             <button
               onClick={() => setChatOpen((state) => !state)}
-              className="relative flex h-14 w-14 items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-xl shadow-blue-500/30 transition hover:scale-[1.03] hover:shadow-2xl sm:h-16 sm:w-16"
+              className={`relative flex h-14 w-14 items-center justify-center rounded-full border-4 text-white transition hover:scale-[1.03] hover:shadow-2xl sm:h-16 sm:w-16 ${
+                isDarkTheme
+                  ? 'border-slate-900 bg-gradient-to-br from-blue-500 via-sky-500 to-cyan-400 shadow-xl shadow-cyan-500/25'
+                  : 'border-white bg-gradient-to-br from-blue-600 to-cyan-500 shadow-xl shadow-blue-500/30'
+              }`}
               aria-label={chatOpen ? 'Hide quick chat' : 'Open quick chat'}
               title="Quick chat"
             >

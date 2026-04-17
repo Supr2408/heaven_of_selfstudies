@@ -17,12 +17,14 @@ const getBatchLabel = (yearInstance) => {
 };
 
 export default function WeekDetail({ week, yearInstance, navigationSlot = null, onPdfLoadError = null }) {
-  const { isAuthenticated, user } = useStore((state) => ({
+  const { isAuthenticated, user, currentTheme } = useStore((state) => ({
     isAuthenticated: state.isAuthenticated,
     user: state.user,
+    currentTheme: state.currentTheme,
   }));
   const canUploadMissingMaterial = isGoogleUser(user);
   const isGuestMode = isGuestLikeUser(user);
+  const isDarkTheme = currentTheme === 'dark';
   const firstPdfIndex = (week?.materials || []).findLastIndex(
     (material) => (material?.fileType || '').toLowerCase() === 'pdf'
   );
@@ -108,16 +110,28 @@ export default function WeekDetail({ week, yearInstance, navigationSlot = null, 
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-500 px-5 py-5 text-white shadow-sm sm:px-6 sm:py-6">
+      <div
+        className={`rounded-2xl px-5 py-5 text-white sm:px-6 sm:py-6 ${
+          isDarkTheme
+            ? 'border border-slate-800 bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.18),_transparent_32%),linear-gradient(135deg,#1d4ed8_0%,#2563eb_36%,#4338ca_72%,#312e81_100%)] shadow-[0_24px_50px_-30px_rgba(37,99,235,0.85)]'
+            : 'bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-500 shadow-sm'
+        }`}
+      >
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="space-y-2">
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{week.title}</h1>
-            <p className="max-w-3xl text-sm text-blue-50 md:text-base">
+            <p className={`max-w-3xl text-sm md:text-base ${isDarkTheme ? 'text-blue-100/90' : 'text-blue-50'}`}>
               {week.description || `Study materials for ${week.title}.`}
             </p>
           </div>
           {batchLabel ? (
-            <div className="inline-flex items-center rounded-full bg-white/15 px-3 py-1.5 text-sm font-semibold text-white backdrop-blur sm:px-4 sm:py-2">
+            <div
+              className={`inline-flex items-center rounded-full px-3 py-1.5 text-sm font-semibold text-white backdrop-blur sm:px-4 sm:py-2 ${
+                isDarkTheme
+                  ? 'border border-white/10 bg-white/12 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
+                  : 'bg-white/15'
+              }`}
+            >
               {batchLabel}
             </div>
           ) : null}
@@ -127,7 +141,11 @@ export default function WeekDetail({ week, yearInstance, navigationSlot = null, 
           <div className="mt-4">
             <Link
               href={`/dashboard/discussion?courseId=${linkedCourseId}&courseTitle=${encodeURIComponent(linkedCourseTitle)}`}
-              className="inline-flex items-center rounded-full border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
+              className={`inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold text-white transition ${
+                isDarkTheme
+                  ? 'border border-white/15 bg-slate-950/20 hover:bg-white/12'
+                  : 'border border-white/30 bg-white/10 hover:bg-white/20'
+              }`}
             >
               Open course discussion branch
             </Link>

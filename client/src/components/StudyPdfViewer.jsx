@@ -279,49 +279,54 @@ export default function StudyPdfViewer({ src, storageKey, onLoadError = null }) 
     setTool((current) => (current === toolName ? null : toolName));
   };
 
+  const panelGroupClass =
+    'inline-flex flex-wrap items-center gap-2 rounded-[1.2rem] border border-white/10 bg-white/[0.04] p-1.5';
+  const quietButtonClass =
+    'inline-flex h-10 items-center justify-center gap-2 rounded-full border px-4 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40';
+  const activeToolClass = 'border-blue-400 bg-blue-500/20 text-white';
+  const inactiveToolClass = 'border-white/15 bg-white/5 text-slate-200 hover:bg-white/10';
+
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-800 bg-slate-950 px-2.5 py-2.5 text-white sm:px-4 sm:py-3">
-        <div className="flex flex-col gap-2.5 sm:gap-3">
+        <div className="flex flex-col gap-3">
           {editorEnabled ? (
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-              {Object.entries(TOOL_CONFIG).map(([toolName, config]) => {
-                const Icon = toolName === 'pen' ? PenLine : Highlighter;
-                return (
-                  <button
-                    key={toolName}
-                    onClick={() => toggleTool(toolName)}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-medium transition sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
-                      tool === toolName
-                        ? 'border-blue-400 bg-blue-500/20 text-white'
-                        : 'border-white/15 bg-white/5 text-slate-200 hover:bg-white/10'
-                    }`}
-                  >
-                    <Icon size={14} className="sm:h-[15px] sm:w-[15px]" />
-                    {config.label}
-                  </button>
-                );
-              })}
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className={`${panelGroupClass} max-w-full`}>
+                {Object.entries(TOOL_CONFIG).map(([toolName, config]) => {
+                  const Icon = toolName === 'pen' ? PenLine : Highlighter;
+                  return (
+                    <button
+                      key={toolName}
+                      onClick={() => toggleTool(toolName)}
+                      className={`${quietButtonClass} ${
+                        tool === toolName ? activeToolClass : inactiveToolClass
+                      }`}
+                    >
+                      <Icon size={15} />
+                      {config.label}
+                    </button>
+                  );
+                })}
 
-              <button
-                onClick={() => toggleTool('eraser')}
-                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-medium transition sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
-                  tool === 'eraser'
-                    ? 'border-blue-400 bg-blue-500/20 text-white'
-                    : 'border-white/15 bg-white/5 text-slate-200 hover:bg-white/10'
-                }`}
-              >
-                <Eraser size={14} className="sm:h-[15px] sm:w-[15px]" />
-                Eraser
-              </button>
+                <button
+                  onClick={() => toggleTool('eraser')}
+                  className={`${quietButtonClass} ${
+                    tool === 'eraser' ? activeToolClass : inactiveToolClass
+                  }`}
+                >
+                  <Eraser size={15} />
+                  Eraser
+                </button>
+              </div>
 
-              <div className="ml-0.5 flex items-center gap-1.5 sm:ml-1 sm:gap-2">
+              <div className={`${panelGroupClass} self-start lg:justify-end`}>
                 {COLOR_OPTIONS.map((value) => (
                   <button
                     key={value}
                     onClick={() => setColor(value)}
-                    className={`h-7 w-7 rounded-full border-2 transition sm:h-9 sm:w-9 ${
-                      color === value ? 'border-white scale-110' : 'border-transparent'
+                    className={`h-10 w-10 rounded-full border-2 transition ${
+                      color === value ? 'scale-110 border-white shadow-[0_0_0_2px_rgba(15,23,42,0.45)]' : 'border-transparent'
                     }`}
                     style={{ backgroundColor: value }}
                     aria-label={`Select ${value} ink color`}
@@ -331,67 +336,73 @@ export default function StudyPdfViewer({ src, storageKey, onLoadError = null }) 
             </div>
           ) : null}
 
-          <div className="flex flex-wrap items-center justify-end gap-1.5 sm:justify-start sm:gap-2">
-            <button
-              disabled={currentPage <= 1}
-              onClick={() => goToPage(currentPage - 1)}
-              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3 sm:py-2 sm:text-sm"
-            >
-              <ChevronLeft size={14} className="sm:h-[15px] sm:w-[15px]" />
-              <span className={isCompactViewport ? 'hidden' : 'inline'}>Prev</span>
-            </button>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className={`${panelGroupClass} self-start`}>
+              <button
+                disabled={currentPage <= 1}
+                onClick={() => goToPage(currentPage - 1)}
+                className={quietButtonClass}
+              >
+                <ChevronLeft size={15} />
+                <span className={isCompactViewport ? 'hidden' : 'inline'}>Prev</span>
+              </button>
 
-            <div className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] font-semibold text-white sm:px-3 sm:py-2 sm:text-sm">
-              {currentPage} / {numPages || 1}
+              <div className="inline-flex h-10 min-w-[4.5rem] items-center justify-center rounded-full border border-white/15 bg-white/5 px-4 text-sm font-semibold text-white">
+                {currentPage} / {numPages || 1}
+              </div>
+
+              <button
+                disabled={currentPage >= numPages}
+                onClick={() => goToPage(currentPage + 1)}
+                className={quietButtonClass}
+              >
+                <span className={isCompactViewport ? 'hidden' : 'inline'}>Next</span>
+                <ChevronRight size={15} />
+              </button>
             </div>
 
-            <button
-              disabled={currentPage >= numPages}
-              onClick={() => goToPage(currentPage + 1)}
-              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3 sm:py-2 sm:text-sm"
-            >
-              <span className={isCompactViewport ? 'hidden' : 'inline'}>Next</span>
-              <ChevronRight size={14} className="sm:h-[15px] sm:w-[15px]" />
-            </button>
-
             {editorEnabled ? (
-              <>
-                <button
-                  onClick={() => setZoom((current) => Math.max(0.8, Number((current - 0.1).toFixed(1))))}
-                  className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 transition hover:bg-white/10 sm:px-3 sm:py-2 sm:text-sm"
-                  aria-label="Zoom out"
-                >
-                  <ZoomOut size={14} className="sm:h-[15px] sm:w-[15px]" />
-                </button>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-end">
+                <div className={`${panelGroupClass} self-start`}>
+                  <button
+                    onClick={() => setZoom((current) => Math.max(0.8, Number((current - 0.1).toFixed(1))))}
+                    className={quietButtonClass}
+                    aria-label="Zoom out"
+                  >
+                    <ZoomOut size={15} />
+                  </button>
 
-                <div className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 sm:px-3 sm:py-2 sm:text-sm">
-                  {Math.round(zoom * 100)}%
+                  <div className="inline-flex h-10 min-w-[4.5rem] items-center justify-center rounded-full border border-white/15 bg-white/5 px-4 text-sm text-slate-200">
+                    {Math.round(zoom * 100)}%
+                  </div>
+
+                  <button
+                    onClick={() => setZoom((current) => Math.min(2.2, Number((current + 0.1).toFixed(1))))}
+                    className={quietButtonClass}
+                    aria-label="Zoom in"
+                  >
+                    <ZoomIn size={15} />
+                  </button>
                 </div>
 
-                <button
-                  onClick={() => setZoom((current) => Math.min(2.2, Number((current + 0.1).toFixed(1))))}
-                  className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 transition hover:bg-white/10 sm:px-3 sm:py-2 sm:text-sm"
-                  aria-label="Zoom in"
-                >
-                  <ZoomIn size={14} className="sm:h-[15px] sm:w-[15px]" />
-                </button>
+                <div className={`${panelGroupClass} self-start`}>
+                  <button
+                    onClick={undoLastStroke}
+                    className={quietButtonClass}
+                  >
+                    <RotateCcw size={15} />
+                    {!isCompactViewport ? 'Undo' : null}
+                  </button>
 
-                <button
-                  onClick={undoLastStroke}
-                  className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-200 transition hover:bg-white/10 sm:px-3 sm:py-2 sm:text-sm"
-                >
-                  <RotateCcw size={14} className="sm:h-[15px] sm:w-[15px]" />
-                  {!isCompactViewport ? 'Undo' : null}
-                </button>
-
-                <button
-                  onClick={clearCurrentPage}
-                  className="inline-flex items-center gap-1 rounded-full border border-red-400/40 bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-100 transition hover:bg-red-500/20 sm:px-3 sm:py-2 sm:text-sm"
-                >
-                  <Trash2 size={14} className="sm:h-[15px] sm:w-[15px]" />
-                  {!isCompactViewport ? 'Clear Page' : null}
-                </button>
-              </>
+                  <button
+                    onClick={clearCurrentPage}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-red-400/40 bg-red-500/10 px-4 text-sm font-medium text-red-100 transition hover:bg-red-500/20"
+                  >
+                    <Trash2 size={15} />
+                    {!isCompactViewport ? 'Clear Page' : null}
+                  </button>
+                </div>
+              </div>
             ) : null}
           </div>
         </div>

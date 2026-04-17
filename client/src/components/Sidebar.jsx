@@ -143,9 +143,25 @@ export default function Sidebar() {
 
     try {
       setLoading(true);
-      await loadCoursesForSubject(subject._id);
+      const loadedCourses = dedupeByLabel(
+        await loadCoursesForSubject(subject._id),
+        (course) => course?.title
+      );
+      const singleMatchingCourse =
+        loadedCourses.length === 1 &&
+        normalizeSidebarLabel(loadedCourses[0]?.title) === normalizeSidebarLabel(subject?.name)
+          ? loadedCourses[0]
+          : null;
+
+      if (singleMatchingCourse?._id) {
+        const instances = await loadInstancesForCourse(singleMatchingCourse._id);
+        await Promise.all(instances.map((instance) => loadWeeksForInstance(instance._id)));
+        setExpandedCourse(singleMatchingCourse._id);
+      } else {
+        setExpandedCourse(null);
+      }
+
       setExpandedSubject(subject._id);
-      setExpandedCourse(null);
       setExpandedYearInstance(null);
       setSelectedSubject(subject);
       setError(null);

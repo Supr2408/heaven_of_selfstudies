@@ -147,16 +147,16 @@ export default function Sidebar() {
         await loadCoursesForSubject(subject._id),
         (course) => course?.title
       );
-      const singleMatchingCourse =
-        loadedCourses.length === 1 &&
-        normalizeSidebarLabel(loadedCourses[0]?.title) === normalizeSidebarLabel(subject?.name)
-          ? loadedCourses[0]
-          : null;
+      const matchingCourse =
+        loadedCourses.find(
+          (course) =>
+            normalizeSidebarLabel(course?.title) === normalizeSidebarLabel(subject?.name)
+        ) || null;
 
-      if (singleMatchingCourse?._id) {
-        const instances = await loadInstancesForCourse(singleMatchingCourse._id);
+      if (matchingCourse?._id) {
+        const instances = await loadInstancesForCourse(matchingCourse._id);
         await Promise.all(instances.map((instance) => loadWeeksForInstance(instance._id)));
-        setExpandedCourse(singleMatchingCourse._id);
+        setExpandedCourse(matchingCourse._id);
       } else {
         setExpandedCourse(null);
       }
@@ -380,9 +380,11 @@ export default function Sidebar() {
             coursesBySubject[subject._id] || [],
             (course) => course?.title
           );
-          const hasSingleMatchingCourse =
-            subjectCourses.length === 1 &&
-            normalizeSidebarLabel(subjectCourses[0]?.title) === normalizeSidebarLabel(subject?.name);
+          const matchingCourseId =
+            subjectCourses.find(
+              (course) =>
+                normalizeSidebarLabel(course?.title) === normalizeSidebarLabel(subject?.name)
+            )?._id || '';
 
           return (
             <div key={subject._id}>
@@ -414,10 +416,11 @@ export default function Sidebar() {
                   ) : (
                     subjectCourses.map((course) => {
                       const courseInstances = instancesByCourse[course._id] || [];
+                      const hideCourseEntry = course._id === matchingCourseId;
 
                       return (
                         <div key={course._id}>
-                          {hasSingleMatchingCourse ? null : (
+                          {hideCourseEntry ? null : (
                             <button
                               onClick={() => handleCourseClick(course, subject)}
                               className="flex w-full items-center justify-between rounded px-3 py-1.5 text-xs transition-colors hover:bg-slate-700"
@@ -432,8 +435,8 @@ export default function Sidebar() {
                             </button>
                           )}
 
-                          {expandedCourse === course._id || hasSingleMatchingCourse ? (
-                            <div className={`${hasSingleMatchingCourse ? 'mt-1' : 'ml-3 mt-1 border-l border-slate-800 pl-2'} space-y-1`}>
+                          {expandedCourse === course._id || hideCourseEntry ? (
+                            <div className={`${hideCourseEntry ? 'mt-1' : 'ml-3 mt-1 border-l border-slate-800 pl-2'} space-y-1`}>
                               <button
                                 onClick={() => handleCourseDiscussionSelect(course, subject)}
                                 className={`flex w-full items-center justify-between rounded px-3 py-2 text-left text-xs transition-colors ${

@@ -18,6 +18,44 @@ const roomPresence = new Map();
 const userCooldowns = new Map();
 const globalPresence = new Map();
 
+function sanitizePresenceText(value = '', maxLength = 180) {
+  return String(value || '').trim().slice(0, maxLength);
+}
+
+function buildPresenceMetadata(payload = {}) {
+  const metadata = {};
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'routePath')) {
+    metadata.routePath = sanitizePresenceText(payload.routePath, 240);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'courseId')) {
+    metadata.courseId = sanitizePresenceText(payload.courseId, 80);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'courseTitle')) {
+    metadata.courseTitle = sanitizePresenceText(payload.courseTitle, 180);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'yearInstanceId')) {
+    metadata.yearInstanceId = sanitizePresenceText(payload.yearInstanceId, 80);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'batchLabel')) {
+    metadata.batchLabel = sanitizePresenceText(payload.batchLabel, 80);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'weekId')) {
+    metadata.weekId = sanitizePresenceText(payload.weekId, 80);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'weekTitle')) {
+    metadata.weekTitle = sanitizePresenceText(payload.weekTitle, 180);
+  }
+
+  return metadata;
+}
+
 function getWeekPresenceChannel(roomId) {
   return `presence:${roomId}`;
 }
@@ -100,13 +138,19 @@ function emitRoomStats(io, roomId) {
     .emit('room-stats', { onlineUsers });
 }
 
-function incrementGlobalPresence(userId, ipAddress = '') {
+function incrementGlobalPresence(userId, ipAddress = '', payload = {}) {
   const existing = globalPresence.get(userId) || {
     connectionCount: 0,
     ipCounts: new Map(),
+    metadata: {},
+    lastSyncedAt: null,
   };
   const normalizedIp = normalizeIpAddress(ipAddress);
   const nextIpCounts = new Map(existing.ipCounts || []);
+  const nextMetadata = {
+    ...(existing.metadata || {}),
+    ...buildPresenceMetadata(payload),
+  };
 
   existing.connectionCount += 1;
   if (normalizedIp) {
@@ -116,6 +160,8 @@ function incrementGlobalPresence(userId, ipAddress = '') {
   globalPresence.set(userId, {
     connectionCount: existing.connectionCount,
     ipCounts: nextIpCounts,
+    metadata: nextMetadata,
+    lastSyncedAt: new Date().toISOString(),
   });
 }
 
@@ -142,8 +188,24 @@ function decrementGlobalPresence(userId, ipAddress = '') {
     globalPresence.set(userId, {
       connectionCount: nextCount,
       ipCounts: nextIpCounts,
+      metadata: existing?.metadata || {},
+      lastSyncedAt: existing?.lastSyncedAt || null,
     });
   }
+}
+
+function updateGlobalPresence(userId, payload = {}) {
+  if (!globalPresence.has(userId)) return;
+
+  const existing = globalPresence.get(userId);
+  globalPresence.set(userId, {
+    ...existing,
+    metadata: {
+      ...(existing?.metadata || {}),
+      ...buildPresenceMetadata(payload),
+    },
+    lastSyncedAt: new Date().toISOString(),
+  });
 }
 
 function emitGlobalPresence(io) {
@@ -165,6 +227,14 @@ function getGlobalPresenceSnapshot() {
       userId,
       connectionCount: presence.connectionCount || 0,
       ipAddress,
+      routePath: sanitizePresenceText(presence.metadata?.routePath, 240),
+      courseId: sanitizePresenceText(presence.metadata?.courseId, 80),
+      courseTitle: sanitizePresenceText(presence.metadata?.courseTitle, 180),
+      yearInstanceId: sanitizePresenceText(presence.metadata?.yearInstanceId, 80),
+      batchLabel: sanitizePresenceText(presence.metadata?.batchLabel, 80),
+      weekId: sanitizePresenceText(presence.metadata?.weekId, 80),
+      weekTitle: sanitizePresenceText(presence.metadata?.weekTitle, 180),
+      lastSyncedAt: presence.lastSyncedAt || null,
     };
   });
 }
@@ -237,7 +307,7 @@ async function authenticateSocketUser(socket) {
   return user;
 }
 
-async function ensureGlobalPresence(io, socket) {
+async function ensureGlobalPresence(io, socket, payload = {}) {
   const user = await authenticateSocketUser(socket);
   const userId = String(user._id);
   const ipAddress = getSocketIpAddress(socket);
@@ -245,25 +315,27 @@ async function ensureGlobalPresence(io, socket) {
   if (!socket.globalPresenceUserId) {
     socket.globalPresenceUserId = userId;
     socket.globalPresenceIpAddress = ipAddress;
-    incrementGlobalPresence(userId, ipAddress);
+    incrementGlobalPresence(userId, ipAddress, payload);
+  } else {
+    updateGlobalPresence(userId, payload);
   }
 
   emitGlobalPresence(io);
 }
 
 const initializeSocketIO = (io, socket) => {
-  socket.on('presence-init', async () => {
+  socket.on('presence-init', async (data) => {
     try {
-      await ensureGlobalPresence(io, socket);
+      await ensureGlobalPresence(io, socket, data);
     } catch (error) {
       console.error('Error initializing global presence:', error);
       socket.emit('chat-error', { message: 'Unable to initialize live presence.' });
     }
   });
 
-  socket.on('presence-sync-request', async () => {
+  socket.on('presence-sync-request', async (data) => {
     try {
-      await ensureGlobalPresence(io, socket);
+      await ensureGlobalPresence(io, socket, data);
     } catch (error) {
       console.error('Error syncing global presence:', error);
     }

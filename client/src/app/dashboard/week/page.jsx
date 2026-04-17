@@ -8,7 +8,7 @@ import WeekDiscussions from '@/components/WeekDiscussions';
 import ChatRoom from '@/components/ChatRoom';
 import StudyTimeTracker from '@/components/StudyTimeTracker';
 import { yearInstanceAPI } from '@/lib/api';
-import { initializeSocket, joinWeekPresence, leaveWeekPresence } from '@/lib/socket';
+import { initializeSocket, joinWeekPresence, leaveWeekPresence, syncGlobalPresence } from '@/lib/socket';
 import {
   getAvailabilityMeta,
   hasWeekStudyContent,
@@ -429,6 +429,32 @@ function WeekPageContent() {
       setOnlineUsers(0);
     };
   }, [activeWeek?._id, isAuthenticated, roomId, setOnlineUsers, user]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user?._id) {
+      return;
+    }
+
+    syncGlobalPresence({
+      routePath: trackedRoutePath,
+      courseId: trackedCourseId,
+      courseTitle: trackedCourseTitle,
+      yearInstanceId: activeYearInstanceId,
+      batchLabel: activeBatchLabel,
+      weekId: activeWeek?._id || '',
+      weekTitle: activeWeek?.title || '',
+    });
+  }, [
+    activeBatchLabel,
+    activeWeek?._id,
+    activeWeek?.title,
+    activeYearInstanceId,
+    isAuthenticated,
+    trackedCourseId,
+    trackedCourseTitle,
+    trackedRoutePath,
+    user?._id,
+  ]);
 
   useEffect(() => {
     const sourceInstance = activeYearInstance || activeWeek?.yearInstanceId;

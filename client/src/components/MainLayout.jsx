@@ -2,9 +2,9 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   ArrowUpRight,
   BookOpen,
@@ -32,7 +32,7 @@ import {
   isGuestLikeUser,
   requireGoogleAfterGuestSession,
 } from '@/lib/user';
-import { disconnectSocket, initializeSocket } from '@/lib/socket';
+import { disconnectSocket, initializeGlobalPresence, initializeSocket, syncGlobalPresence } from '@/lib/socket';
 
 const DEFAULT_STUDY_SUMMARY = {
   totalSeconds: 0,
@@ -53,6 +53,7 @@ const formatGuestTimeRemaining = (remainingMs) => {
 
 export default function MainLayout({ children }) {
   const router = useRouter();
+  const pathname = usePathname();
   const dropdownRef = useRef(null);
   const legalRef = useRef(null);
   const guestExpiryHandledRef = useRef(false);
@@ -75,6 +76,24 @@ export default function MainLayout({ children }) {
   const aliasLocked = Boolean(store.user?.displayNameLocked);
   const hasCustomAlias = Boolean(store.user?.displayName?.trim());
   const originalGoogleName = store.user?.name?.trim() || 'your original Google name';
+  const currentRoutePath = `${pathname || ''}${typeof window !== 'undefined' ? window.location.search || '' : ''}`;
+  const globalPresencePayload = useMemo(
+    () =>
+      pathname === '/dashboard/week'
+        ? {
+            routePath: currentRoutePath,
+          }
+        : {
+            routePath: currentRoutePath,
+            courseId: '',
+            courseTitle: '',
+            yearInstanceId: '',
+            batchLabel: '',
+            weekId: '',
+            weekTitle: '',
+          },
+    [currentRoutePath, pathname]
+  );
 
   const forceGoogleSignIn = async () => {
     if (guestExpiryHandledRef.current) {
@@ -218,12 +237,12 @@ export default function MainLayout({ children }) {
     };
 
     const emitPresenceInit = () => {
-      socket.emit('presence-init');
+      initializeGlobalPresence(globalPresencePayload);
     };
 
     const syncPresence = () => {
       if (socket.connected) {
-        socket.emit('presence-sync-request');
+        syncGlobalPresence(globalPresencePayload);
       }
     };
 
@@ -255,7 +274,15 @@ export default function MainLayout({ children }) {
       socket.off('presence-stats', handlePresenceStats);
       socket.off('connect', emitPresenceInit);
     };
-  }, [publicName, setGlobalActiveUsers, store.authReady, store.isAuthenticated, store.user?._id]);
+  }, [globalPresencePayload, publicName, setGlobalActiveUsers, store.authReady, store.isAuthenticated, store.user?._id]);
+
+  useEffect(() => {
+    if (!store.authReady || !store.isAuthenticated || !store.user?._id) {
+      return;
+    }
+
+    syncGlobalPresence(globalPresencePayload);
+  }, [globalPresencePayload, store.authReady, store.isAuthenticated, store.user?._id]);
 
   useEffect(() => {
     if (!store.authReady || !store.isAuthenticated || !store.user?._id) {

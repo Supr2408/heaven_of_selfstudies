@@ -137,6 +137,14 @@ exports.getInternalPresenceSummary = catchAsync(async (req, res, next) => {
         avatar: user.avatar || null,
         connectionCount: entry.connectionCount || 1,
         ipAddress: sanitizeText(entry.ipAddress || '', 80),
+        routePath: sanitizeText(entry.routePath || '', 240),
+        courseId: sanitizeText(entry.courseId || '', 80),
+        courseTitle: sanitizeText(entry.courseTitle || '', 180),
+        yearInstanceId: sanitizeText(entry.yearInstanceId || '', 80),
+        batchLabel: sanitizeText(entry.batchLabel || '', 80),
+        weekId: sanitizeText(entry.weekId || '', 80),
+        weekTitle: sanitizeText(entry.weekTitle || '', 180),
+        lastSyncedAt: entry.lastSyncedAt || null,
       };
     })
     .filter(Boolean)

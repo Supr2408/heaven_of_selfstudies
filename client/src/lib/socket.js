@@ -178,6 +178,18 @@ export const leaveWeekPresence = () => {
   socket.emit('leave-week-presence');
 };
 
+export const initializeGlobalPresence = (payload = {}) => {
+  if (!socket?.connected) return;
+
+  socket.emit('presence-init', payload);
+};
+
+export const syncGlobalPresence = (payload = {}) => {
+  if (!socket?.connected) return;
+
+  socket.emit('presence-sync-request', payload);
+};
+
 /**
  * Close socket connection
  */
@@ -191,7 +203,9 @@ export const disconnectSocket = () => {
 export default {
   initializeSocket,
   getSocket,
+  initializeGlobalPresence,
   joinRoom,
   joinWeekPresence,
+  syncGlobalPresence,
   sendMessage,
 };

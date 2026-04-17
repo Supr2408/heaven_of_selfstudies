@@ -161,7 +161,13 @@ export default function CoursesPage() {
   const renderSelectedCoursePanel = () => {
     if (previewLoading) {
       return (
-        <div className="flex items-center gap-3 rounded-2xl border border-sky-100 bg-sky-50 p-4 text-sm font-medium text-sky-800">
+        <div
+          className={`flex items-center gap-3 rounded-2xl border p-4 text-sm font-medium ${
+            isDarkTheme
+              ? 'border-cyan-400/25 bg-cyan-500/10 text-cyan-100'
+              : 'border-sky-100 bg-sky-50 text-sky-800'
+          }`}
+        >
           <Loader2 size={18} className="animate-spin" />
           Loading course availability and import options...
         </div>
@@ -170,7 +176,13 @@ export default function CoursesPage() {
 
     if (previewError) {
       return (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+        <div
+          className={`rounded-2xl border p-4 text-sm ${
+            isDarkTheme
+              ? 'border-rose-400/30 bg-rose-500/10 text-rose-100'
+              : 'border-rose-200 bg-rose-50 text-rose-700'
+          }`}
+        >
           {previewError}
         </div>
       );
@@ -185,7 +197,11 @@ export default function CoursesPage() {
             href={preview.courseUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-sky-700 transition hover:bg-sky-50 hover:text-sky-800"
+            className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition ${
+              isDarkTheme
+                ? 'border-slate-700 bg-slate-950/70 text-cyan-200 hover:bg-slate-900 hover:text-cyan-100'
+                : 'border-slate-200 text-sky-700 hover:bg-sky-50 hover:text-sky-800'
+            }`}
           >
             Open official NPTEL page
             <ExternalLink size={15} />
@@ -193,13 +209,19 @@ export default function CoursesPage() {
         </div>
 
         {preview.hubCourse ? (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-            <div className="text-sm font-semibold text-emerald-800">
+          <div
+            className={`rounded-2xl border p-4 ${
+              isDarkTheme
+                ? 'border-emerald-400/25 bg-emerald-500/10'
+                : 'border-emerald-200 bg-emerald-50'
+            }`}
+          >
+            <div className={`text-sm font-semibold ${isDarkTheme ? 'text-emerald-100' : 'text-emerald-800'}`}>
               {preview.hubCourse.userHasCourse
                 ? 'Continue with your copy'
                 : 'Already available in the Hub'}
             </div>
-            <p className="mt-1 text-sm text-emerald-700">
+            <p className={`mt-1 text-sm ${isDarkTheme ? 'text-emerald-200/90' : 'text-emerald-700'}`}>
               {preview.hubCourse.userHasCourse
                 ? `This course is already in your library. ${preview.hubCourse.importedRuns} batch(es) are ready for you.`
                 : `${preview.hubCourse.importedRuns} batch(es) are already imported for this course. Open it once and it will be added to your library.`}
@@ -207,16 +229,26 @@ export default function CoursesPage() {
             <button
               type="button"
               onClick={() => openImportedCourse(preview.hubCourse)}
-              className="mt-3 inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800"
+              className={`mt-3 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                isDarkTheme
+                  ? 'bg-emerald-300 text-slate-950 hover:bg-emerald-200'
+                  : 'bg-emerald-700 text-white hover:bg-emerald-800'
+              }`}
             >
               {preview.hubCourse.userHasCourse ? 'Continue with this course' : 'Open in Hub'}
               <ArrowRight size={16} />
             </button>
           </div>
         ) : (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div
+            className={`rounded-2xl border p-4 ${
+              isDarkTheme
+                ? 'border-slate-700 bg-slate-950/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'
+                : 'border-slate-200 bg-slate-50'
+            }`}
+          >
             <div className="text-sm font-semibold text-slate-900">Not imported yet</div>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className={`mt-1 text-sm ${isDarkTheme ? 'text-slate-300' : 'text-slate-600'}`}>
               Importing will create the subject, course, batch history, weeks, and
               assignment-solution branches so it appears in the Hub.
             </p>
@@ -224,7 +256,11 @@ export default function CoursesPage() {
               type="button"
               onClick={handleImport}
               disabled={importingId === selectedCourse?.courseNumericId}
-              className="mt-3 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className={`mt-3 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                isDarkTheme
+                  ? 'bg-cyan-300 text-slate-950 hover:bg-cyan-200'
+                  : 'bg-slate-900 text-white hover:bg-slate-800'
+              }`}
             >
               {importingId === selectedCourse?.courseNumericId ? (
                 <Loader2 size={16} className="animate-spin" />
@@ -269,7 +305,13 @@ export default function CoursesPage() {
                 </div>
               </div>
             ) : preview.runs.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
+              <div
+                className={`rounded-2xl border border-dashed p-5 text-sm ${
+                  isDarkTheme
+                    ? 'border-slate-700 bg-slate-950/70 text-slate-400'
+                    : 'border-slate-300 bg-slate-50 text-slate-500'
+                }`}
+              >
                 No public statistics runs were found on the course page, so import will rely
                 on the course outline fallback if announcements are unavailable.
               </div>
@@ -278,7 +320,7 @@ export default function CoursesPage() {
                 {preview.runs.map((run) => (
                   <div
                     key={`${run.timeline}-${run.courseId}`}
-                    className="rounded-2xl border border-slate-200 p-4"
+                    className={`rounded-2xl border p-4 ${isDarkTheme ? 'border-slate-700 bg-slate-950/65' : 'border-slate-200'}`}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
@@ -300,14 +342,18 @@ export default function CoursesPage() {
                     </div>
 
                     <div className="mt-3 flex flex-wrap gap-3 text-sm">
-                      <div className="rounded-xl bg-slate-100 px-3 py-2 font-mono text-slate-700">
+                      <div className={`rounded-xl px-3 py-2 font-mono ${isDarkTheme ? 'bg-slate-900 text-slate-200' : 'bg-slate-100 text-slate-700'}`}>
                         {run.announcementCourseCode}
                       </div>
                       <a
                         href={run.announcementsUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-slate-700 hover:bg-slate-50"
+                        className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 ${
+                          isDarkTheme
+                            ? 'border-slate-700 text-slate-200 hover:bg-slate-900'
+                            : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
                       >
                         Announcements
                         <ExternalLink size={14} />
@@ -449,10 +495,14 @@ export default function CoursesPage() {
                 return (
                   <article
                     key={course.courseNumericId}
-                    className={`overflow-hidden rounded-3xl border bg-white shadow-sm transition ${
+                    className={`overflow-hidden rounded-3xl border shadow-sm transition ${
                       isSelected
-                        ? 'border-sky-400 ring-2 ring-sky-100'
-                        : 'border-slate-200 hover:-translate-y-0.5 hover:shadow-md'
+                        ? isDarkTheme
+                          ? 'border-cyan-300 ring-2 ring-cyan-300/25 bg-slate-900'
+                          : 'border-sky-400 ring-2 ring-sky-100 bg-white'
+                        : isDarkTheme
+                          ? 'border-slate-700 bg-slate-950 hover:-translate-y-0.5 hover:border-slate-600 hover:shadow-md'
+                          : 'border-slate-200 bg-white hover:-translate-y-0.5 hover:shadow-md'
                     }`}
                   >
                     <button
@@ -487,7 +537,13 @@ export default function CoursesPage() {
                     </button>
 
                     {isSelected ? (
-                      <div className="border-t border-slate-100 bg-slate-50/60 p-5">
+                      <div
+                        className={`border-t p-5 ${
+                          isDarkTheme
+                            ? 'border-slate-800 bg-slate-900/90'
+                            : 'border-slate-100 bg-slate-50/60'
+                        }`}
+                      >
                         {renderSelectedCoursePanel()}
                       </div>
                     ) : null}

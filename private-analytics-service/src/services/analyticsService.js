@@ -2,6 +2,7 @@ const StudyActivityEvent = require('../models/StudyActivityEvent');
 const StudyDailySummary = require('../models/StudyDailySummary');
 const {
   LIVE_ACTIVE_WINDOW_MINUTES,
+  LIVE_PRESENT_WINDOW_SECONDS,
   buildAdminRows,
   buildDailyWorkbookBuffer,
   buildLearnerSummary,
@@ -419,23 +420,26 @@ const getAdminDailySummary = async ({ dateKey = '' }) => {
 };
 
 const getAdminLiveSummary = async () => {
-  const windowStart = new Date(Date.now() - LIVE_ACTIVE_WINDOW_MINUTES * 60 * 1000);
+  const now = Date.now();
+  const windowStart = new Date(now - LIVE_ACTIVE_WINDOW_MINUTES * 60 * 1000);
+  const presentWindowStart = new Date(now - LIVE_PRESENT_WINDOW_SECONDS * 1000);
   const records = await StudyActivityEvent.find({
     trackedAt: { $gte: windowStart },
   })
     .sort({ trackedAt: -1 })
     .lean();
 
-  const userMap = new Map();
+  const presentUserMap = new Map();
   const courseMap = new Map();
   const courseUserSets = new Map();
 
   records.forEach((record) => {
     const recordIdentityKey = record.identityKey || buildIdentityKey(record);
     const recordCourseKey = record.courseKey || buildCourseKey(record);
+    const trackedAtTime = new Date(record.trackedAt || 0).getTime();
 
-    if (!userMap.has(recordIdentityKey)) {
-      userMap.set(recordIdentityKey, {
+    if (trackedAtTime >= presentWindowStart.getTime() && !presentUserMap.has(recordIdentityKey)) {
+      presentUserMap.set(recordIdentityKey, {
         identityKey: recordIdentityKey,
         userId: record.userId,
         email: record.email,
@@ -467,12 +471,13 @@ const getAdminLiveSummary = async () => {
   return {
     generatedAt: new Date().toISOString(),
     activeWindowMinutes: LIVE_ACTIVE_WINDOW_MINUTES,
+    presentWindowSeconds: LIVE_PRESENT_WINDOW_SECONDS,
     heartbeatEvents: records.length,
-    activeUsers: userMap.size,
+    activeUsers: presentUserMap.size,
     activeCourses: [...courseMap.values()]
       .sort((left, right) => right.activeUsers - left.activeUsers)
       .slice(0, 8),
-    recentUsers: [...userMap.values()].slice(0, 20),
+    recentUsers: [...presentUserMap.values()].slice(0, 20),
   };
 };
 

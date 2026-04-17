@@ -542,7 +542,34 @@ function WeekPageContent() {
                     </div>
                   </div>
 
-                  <div className="flex min-w-max gap-2 sm:gap-3">
+                  <div className="mb-3 sm:hidden">
+                    {loadingWeeks ? (
+                      <div className="text-sm text-slate-500">Loading weeks...</div>
+                    ) : (
+                      <label className="block">
+                        <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                          Week
+                        </span>
+                        <select
+                          value={activeWeek?._id || ''}
+                          onChange={(event) => openWeek(event.target.value)}
+                          className={`w-full rounded-2xl border px-4 py-3 text-sm font-medium outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 ${
+                            isDarkTheme
+                              ? 'border-slate-700 bg-slate-900 text-slate-100'
+                              : 'border-slate-300 bg-white text-slate-900'
+                          }`}
+                        >
+                          {weekButtons.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              Week {item.label}{item.hasContent ? ' - ready' : ' - missing content'}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                  </div>
+
+                  <div className="hidden min-w-max gap-2 sm:flex sm:gap-3">
                     {loadingWeeks ? (
                       <div className="text-sm text-slate-500">Loading weeks...</div>
                     ) : (

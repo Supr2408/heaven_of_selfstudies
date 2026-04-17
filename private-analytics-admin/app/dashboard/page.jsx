@@ -213,6 +213,9 @@ export default function DashboardPage() {
           <div>
             <p>Active users now</p>
             <strong>{liveSummary?.activeUsers || 0}</strong>
+            <span className="metric-subcopy">
+              Last {liveSummary?.presentWindowSeconds || 45}s
+            </span>
           </div>
         </article>
 
@@ -318,8 +321,11 @@ export default function DashboardPage() {
         <div className="panel-header">
           <div>
             <p className="panel-eyebrow">Live learners</p>
-            <h2>Recent active users</h2>
+            <h2>Currently present learners</h2>
           </div>
+          <span className="panel-pill">
+            Last {liveSummary?.presentWindowSeconds || 45}s
+          </span>
         </div>
 
         <div className="table-wrap">
@@ -351,7 +357,7 @@ export default function DashboardPage() {
               ) : (
                 <tr>
                   <td colSpan={7} className="empty-cell">
-                    No active users in the current live window.
+                    No learners are currently present in the live window.
                   </td>
                 </tr>
               )}

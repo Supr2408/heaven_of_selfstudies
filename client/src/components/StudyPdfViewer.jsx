@@ -337,7 +337,7 @@ export default function StudyPdfViewer({ src, storageKey, onLoadError = null }) 
           ) : null}
 
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className={`${panelGroupClass} self-start`}>
+            <div className={`${panelGroupClass} self-end sm:self-start`}>
               <button
                 disabled={currentPage <= 1}
                 onClick={() => goToPage(currentPage - 1)}

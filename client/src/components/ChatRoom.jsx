@@ -315,7 +315,7 @@ export default function ChatRoom({ weekId, courseId, year, weekNumber, onOpenDis
               onClick={() => setShowEntryPrompt(false)}
               className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
                 isDarkTheme
-                  ? 'bg-cyan-300 text-slate-950 hover:bg-cyan-200'
+                  ? 'bg-cyan-300 text-[#08111f] hover:bg-cyan-200 hover:text-[#08111f]'
                   : 'bg-blue-600 text-white hover:bg-blue-700'
               }`}
             >

@@ -16,6 +16,26 @@ import {
 import { isAdminUser } from '@/lib/user';
 import useStore from '@/store/useStore';
 
+const normalizeSidebarLabel = (value = '') =>
+  String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+
+const dedupeByLabel = (items = [], getLabel = () => '') => {
+  const seen = new Set();
+
+  return (Array.isArray(items) ? items : []).filter((item) => {
+    const key = normalizeSidebarLabel(getLabel(item));
+    if (!key || seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+};
+
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
@@ -68,7 +88,7 @@ export default function Sidebar() {
       try {
         setLoading(true);
         const response = await courseAPI.getAllSubjects();
-        setSubjects(response.data || []);
+        setSubjects(dedupeByLabel(response.data || [], (subject) => subject?.name));
       } catch (err) {
         console.error('Failed to fetch subjects:', err);
         setError('Unable to load subjects right now.');
@@ -340,7 +360,13 @@ export default function Sidebar() {
         ) : null}
 
         {subjects.map((subject) => {
-          const subjectCourses = coursesBySubject[subject._id] || [];
+          const subjectCourses = dedupeByLabel(
+            coursesBySubject[subject._id] || [],
+            (course) => course?.title
+          );
+          const hasSingleMatchingCourse =
+            subjectCourses.length === 1 &&
+            normalizeSidebarLabel(subjectCourses[0]?.title) === normalizeSidebarLabel(subject?.name);
 
           return (
             <div key={subject._id}>
@@ -375,21 +401,23 @@ export default function Sidebar() {
 
                       return (
                         <div key={course._id}>
-                          <button
-                            onClick={() => handleCourseClick(course, subject)}
-                            className="flex w-full items-center justify-between rounded px-3 py-1.5 text-xs transition-colors hover:bg-slate-700"
-                          >
-                            <span className="truncate">{course.title}</span>
-                            <ChevronDown
-                              size={14}
-                              className={`flex-shrink-0 transition-transform ${
-                                expandedCourse === course._id ? 'rotate-180' : ''
-                              }`}
-                            />
-                          </button>
+                          {hasSingleMatchingCourse ? null : (
+                            <button
+                              onClick={() => handleCourseClick(course, subject)}
+                              className="flex w-full items-center justify-between rounded px-3 py-1.5 text-xs transition-colors hover:bg-slate-700"
+                            >
+                              <span className="truncate">{course.title}</span>
+                              <ChevronDown
+                                size={14}
+                                className={`flex-shrink-0 transition-transform ${
+                                  expandedCourse === course._id ? 'rotate-180' : ''
+                                }`}
+                              />
+                            </button>
+                          )}
 
-                          {expandedCourse === course._id ? (
-                            <div className="ml-3 mt-1 space-y-1 border-l border-slate-800 pl-2">
+                          {expandedCourse === course._id || hasSingleMatchingCourse ? (
+                            <div className={`${hasSingleMatchingCourse ? 'mt-1' : 'ml-3 mt-1 border-l border-slate-800 pl-2'} space-y-1`}>
                               <button
                                 onClick={() => handleCourseDiscussionSelect(course, subject)}
                                 className={`flex w-full items-center justify-between rounded px-3 py-2 text-left text-xs transition-colors ${

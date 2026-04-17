@@ -10,6 +10,11 @@ const LIVE_ACTIVE_WINDOW_MINUTES = Math.max(
   1
 );
 
+const LIVE_PRESENT_WINDOW_SECONDS = Math.max(
+  Number.parseInt(process.env.LIVE_PRESENT_WINDOW_SECONDS || '45', 10) || 45,
+  15
+);
+
 const getDateKey = (dateValue, timezoneOffsetMinutes = 0) => {
   const trackedAt = new Date(dateValue || Date.now());
   const shifted = new Date(trackedAt.getTime() - timezoneOffsetMinutes * 60 * 1000);
@@ -213,6 +218,7 @@ const buildDailyWorkbookBuffer = (rows = []) => {
 module.exports = {
   DAILY_GOAL_MINUTES,
   LIVE_ACTIVE_WINDOW_MINUTES,
+  LIVE_PRESENT_WINDOW_SECONDS,
   getDateKey,
   sanitizeDuration,
   buildLocationLabel,

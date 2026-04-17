@@ -77,9 +77,12 @@ function WeekPageContent() {
   const [error, setError] = useState('');
   const [chatOpen, setChatOpen] = useState(false);
   const [batchMenuOpen, setBatchMenuOpen] = useState(false);
+  const [weekMenuOpen, setWeekMenuOpen] = useState(false);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [chatActivityLabel, setChatActivityLabel] = useState('');
   const chatOpenRef = useRef(false);
+  const batchMenuRef = useRef(null);
+  const weekMenuRef = useRef(null);
   const isDarkTheme = currentTheme === 'dark';
 
   const activeWeek = week?._id && week._id === weekId ? week : null;
@@ -233,6 +236,7 @@ function WeekPageContent() {
 
   const openWeek = (nextWeekId) => {
     if (!nextWeekId || nextWeekId === activeWeek?._id) return;
+    setWeekMenuOpen(false);
     router.push(`/dashboard/week?weekId=${nextWeekId}`);
   };
 
@@ -246,6 +250,7 @@ function WeekPageContent() {
       const nextWeeks = normalizeVisibleWeeks(response?.data || []);
       setWeeksByInstance((prev) => ({ ...prev, [nextInstanceId]: nextWeeks }));
       setBatchMenuOpen(false);
+      setWeekMenuOpen(false);
       const targetWeek = findBestWeek(nextWeeks, activeWeek?.weekNumber);
 
       if (targetWeek?._id) {
@@ -317,10 +322,57 @@ function WeekPageContent() {
   const activeBatchMeta = getAvailabilityMeta(activeBatchSummary.status);
   const pageLoading = !week && (loading || (loadingWeeks && Boolean(activeYearInstanceId)));
   const unreadChatBadge = unreadChatCount > 99 ? '99+' : `${unreadChatCount}`;
+  const activeWeekButton = weekButtons.find((item) => item.active) || null;
+
+  const getWeekStatusCopy = (item) => (item?.hasContent ? 'Ready' : 'Missing');
+  const getWeekItemClass = (item, selected = false) => {
+    if (selected) {
+      return isDarkTheme
+        ? 'border-blue-400 bg-gradient-to-r from-blue-600 to-indigo-500 text-white shadow-[0_12px_28px_-18px_rgba(59,130,246,0.9)]'
+        : 'border-blue-600 bg-blue-600 text-white shadow-sm';
+    }
+
+    if (item?.hasContent) {
+      return isDarkTheme
+        ? 'border-emerald-400/45 bg-emerald-500/10 text-emerald-100 hover:border-emerald-300 hover:bg-emerald-500/16'
+        : 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100';
+    }
+
+    return isDarkTheme
+      ? 'border-rose-400/40 bg-rose-500/10 text-rose-100 hover:border-rose-300 hover:bg-rose-500/16'
+      : 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100';
+  };
 
   useEffect(() => {
     chatOpenRef.current = chatOpen;
   }, [chatOpen]);
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      if (batchMenuRef.current && !batchMenuRef.current.contains(event.target)) {
+        setBatchMenuOpen(false);
+      }
+
+      if (weekMenuRef.current && !weekMenuRef.current.contains(event.target)) {
+        setWeekMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        setBatchMenuOpen(false);
+        setWeekMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, []);
 
   useEffect(() => {
     if (!chatOpen) return;
@@ -450,12 +502,14 @@ function WeekPageContent() {
 
                   <div className="w-full lg:max-w-xs">
                     <label className="mb-2 block text-sm font-medium text-slate-700">Batch</label>
-                    <div className="relative">
+                    <div className="relative" ref={batchMenuRef}>
                       <button
                         type="button"
                         onClick={() => setBatchMenuOpen((state) => !state)}
                         className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 ${
-                          isDarkTheme ? 'bg-slate-900/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]' : 'bg-white'
+                          isDarkTheme
+                            ? 'bg-slate-900/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_18px_32px_-24px_rgba(15,23,42,0.85)]'
+                            : 'bg-white'
                         } ${activeBatchMeta.badgeClass}`}
                       >
                         <span className="inline-flex min-w-0 items-center gap-2">
@@ -475,7 +529,7 @@ function WeekPageContent() {
 
                       {batchMenuOpen ? (
                         <div
-                          className={`absolute z-20 mt-2 max-h-80 w-full overflow-y-auto rounded-2xl border p-2 shadow-xl ${
+                          className={`z-20 mt-3 max-h-80 w-full overflow-y-auto rounded-2xl border p-2 shadow-xl sm:absolute sm:left-0 sm:right-0 sm:mt-2 ${
                             isDarkTheme ? 'border-slate-700 bg-slate-950/98' : 'border-slate-200 bg-white'
                           }`}
                         >
@@ -491,7 +545,7 @@ function WeekPageContent() {
                                 onClick={() => handleBatchChange({ target: { value: instance._id } })}
                                 className={`mb-1 flex w-full items-center justify-between rounded-xl border px-3 py-3 text-left text-sm transition last:mb-0 ${
                                   isSelected
-                                    ? `${meta.badgeClass} shadow-sm`
+                                    ? `${meta.badgeClass} shadow-sm ${isDarkTheme ? 'shadow-[0_14px_28px_-22px_rgba(16,185,129,0.55)]' : ''}`
                                     : isDarkTheme
                                       ? 'border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800'
                                       : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
@@ -546,26 +600,94 @@ function WeekPageContent() {
                     {loadingWeeks ? (
                       <div className="text-sm text-slate-500">Loading weeks...</div>
                     ) : (
-                      <label className="block">
+                      <div className="block" ref={weekMenuRef}>
                         <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                           Week
                         </span>
-                        <select
-                          value={activeWeek?._id || ''}
-                          onChange={(event) => openWeek(event.target.value)}
-                          className={`w-full rounded-2xl border px-4 py-3 text-sm font-medium outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 ${
-                            isDarkTheme
-                              ? 'border-slate-700 bg-slate-900 text-slate-100'
-                              : 'border-slate-300 bg-white text-slate-900'
+                        <button
+                          type="button"
+                          onClick={() => setWeekMenuOpen((state) => !state)}
+                          className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 ${
+                            activeWeekButton
+                              ? getWeekItemClass(activeWeekButton, activeWeekButton.active)
+                              : isDarkTheme
+                                ? 'border-slate-700 bg-slate-900 text-slate-100'
+                                : 'border-slate-300 bg-white text-slate-900'
                           }`}
                         >
-                          {weekButtons.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              Week {item.label}{item.hasContent ? ' - ready' : ' - missing content'}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                          <span className="inline-flex min-w-0 items-center gap-2">
+                            <span
+                              className={`h-2.5 w-2.5 rounded-full ${
+                                activeWeekButton?.active
+                                  ? 'bg-white'
+                                  : activeWeekButton?.hasContent
+                                    ? 'bg-emerald-500'
+                                    : 'bg-rose-500'
+                              }`}
+                            />
+                            <span className="truncate text-sm font-semibold">
+                              {activeWeekButton
+                                ? `Week ${activeWeekButton.label} - ${getWeekStatusCopy(activeWeekButton)}`
+                                : 'Select week'}
+                            </span>
+                          </span>
+                          <ChevronDown
+                            size={16}
+                            className={`transition-transform ${weekMenuOpen ? 'rotate-180' : ''}`}
+                          />
+                        </button>
+
+                        {weekMenuOpen ? (
+                          <div
+                            className={`mt-3 overflow-hidden rounded-2xl border shadow-xl ${
+                              isDarkTheme
+                                ? 'border-slate-700 bg-slate-950/98'
+                                : 'border-slate-200 bg-white'
+                            }`}
+                          >
+                            <div className="max-h-80 overflow-y-auto p-2">
+                              {weekButtons.map((item) => (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  onClick={() => openWeek(item.id)}
+                                  className={`mb-2 flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition last:mb-0 ${getWeekItemClass(
+                                    item,
+                                    item.active
+                                  )}`}
+                                >
+                                  <span className="inline-flex min-w-0 items-center gap-2">
+                                    <span
+                                      className={`h-2.5 w-2.5 rounded-full ${
+                                        item.active ? 'bg-white' : item.hasContent ? 'bg-emerald-500' : 'bg-rose-500'
+                                      }`}
+                                    />
+                                    <span className="truncate">Week {item.label}</span>
+                                  </span>
+                                  <span className="inline-flex items-center gap-2">
+                                    <span
+                                      className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] ${
+                                        item.active
+                                          ? 'bg-white/15 text-white'
+                                          : item.hasContent
+                                            ? isDarkTheme
+                                              ? 'bg-emerald-950/60 text-emerald-200'
+                                              : 'bg-white/80 text-emerald-700'
+                                            : isDarkTheme
+                                              ? 'bg-rose-950/60 text-rose-200'
+                                              : 'bg-white/80 text-rose-700'
+                                      }`}
+                                    >
+                                      {getWeekStatusCopy(item)}
+                                    </span>
+                                    {item.active ? <Check size={14} /> : null}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
                     )}
                   </div>
 
@@ -577,19 +699,10 @@ function WeekPageContent() {
                         <button
                           key={item.id}
                           onClick={() => openWeek(item.id)}
-                          className={`rounded-2xl border px-4 py-2.5 text-sm font-semibold transition sm:px-5 sm:py-3 ${
+                          className={`rounded-2xl border px-4 py-2.5 text-sm font-semibold transition sm:px-5 sm:py-3 ${getWeekItemClass(
+                            item,
                             item.active
-                              ? isDarkTheme
-                                ? 'border-blue-400 bg-gradient-to-r from-blue-600 to-indigo-500 text-white shadow-[0_12px_28px_-18px_rgba(59,130,246,0.9)]'
-                                : 'border-blue-600 bg-blue-600 text-white shadow-sm'
-                              : item.hasContent
-                                ? isDarkTheme
-                                  ? 'border-emerald-400/50 bg-emerald-500/8 text-emerald-200 hover:border-emerald-300 hover:bg-emerald-500/14'
-                                  : 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100'
-                                : isDarkTheme
-                                  ? 'border-rose-400/45 bg-rose-500/8 text-rose-200 hover:border-rose-300 hover:bg-rose-500/14'
-                                  : 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100'
-                          }`}
+                          )}`}
                         >
                           <span className="inline-flex items-center gap-2">
                             <span

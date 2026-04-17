@@ -313,6 +313,7 @@ function WeekPageContent() {
           weekId={activeWeek._id}
           weekTitle={activeWeek.title}
           yearInstanceId={activeYearInstanceId}
+          batchLabel={activeBatchLabel}
           routePath={trackedRoutePath}
         />
       ) : null}

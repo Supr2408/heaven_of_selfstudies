@@ -3,6 +3,7 @@ const User = require('../models/User');
 const { generateToken, generateHttpOnlyCookie } = require('../utils/jwtSecure');
 const { sanitizeInput } = require('../utils/validation');
 const { AppError, catchAsync } = require('../utils/errorHandler');
+const { mergeGuestAnalyticsIntoUser } = require('../services/studyAnalyticsService');
 
 const GOOGLE_ONLY_AUTH_MESSAGE =
   'Google sign-in is the only supported authentication method for NPTEL Hub.';
@@ -111,8 +112,11 @@ exports.guestLogin = catchAsync(async (req, res) => {
  */
 exports.googleLogin = catchAsync(async (req, res) => {
   const { credential } = req.body;
+  const guestCode = normalizeGuestCode(req.body?.guestCode);
   const payload = await verifyGoogleCredential(credential);
   const email = payload.email.toLowerCase();
+  const guestEmail = guestCode ? `guest.${guestCode}@nptelhub.com` : '';
+  const guestUser = guestEmail ? await User.findOne({ email: guestEmail }) : null;
 
   let user = await User.findOne({
     $or: [{ email }, { googleId: payload.sub }],
@@ -139,6 +143,19 @@ exports.googleLogin = catchAsync(async (req, res) => {
     }
 
     await user.save();
+  }
+
+  if (guestUser && String(guestUser._id) !== String(user._id)) {
+    const mergedLibrary = [
+      ...new Set([
+        ...(user.libraryYearInstances || []).map(String),
+        ...(guestUser.libraryYearInstances || []).map(String),
+      ]),
+    ];
+    user.libraryYearInstances = mergedLibrary;
+    await user.save();
+
+    await mergeGuestAnalyticsIntoUser({ guestUser, user, guestCode });
   }
 
   createSessionResponse(res, user, 'Logged in with Google successfully');

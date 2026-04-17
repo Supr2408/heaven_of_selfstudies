@@ -39,6 +39,19 @@ export const ensureGuestCode = () => {
   return guestCode;
 };
 
+export const getGuestCode = () => {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  return window.localStorage.getItem(GUEST_CODE_KEY) || '';
+};
+
+export const getClientIdentityKey = () => {
+  const guestCode = ensureGuestCode();
+  return guestCode ? `guest:${guestCode}` : '';
+};
+
 export const markGuestSessionStarted = (startedAt = Date.now()) => {
   if (typeof window === 'undefined') {
     return;

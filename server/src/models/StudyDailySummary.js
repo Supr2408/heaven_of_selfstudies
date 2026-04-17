@@ -7,6 +7,17 @@ const studyDailySummarySchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    identityKey: {
+      type: String,
+      trim: true,
+      default: '',
+      index: true,
+    },
+    clientIdentityKey: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -29,6 +40,12 @@ const studyDailySummarySchema = new mongoose.Schema(
       trim: true,
       default: 'guest',
     },
+    courseKey: {
+      type: String,
+      trim: true,
+      default: '',
+      index: true,
+    },
     courseId: {
       type: String,
       required: true,
@@ -50,6 +67,31 @@ const studyDailySummarySchema = new mongoose.Schema(
       default: '',
     },
     lastYearInstanceId: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    lastBatchLabel: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    ipAddress: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    city: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    region: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    country: {
       type: String,
       trim: true,
       default: '',
@@ -77,6 +119,7 @@ const studyDailySummarySchema = new mongoose.Schema(
 );
 
 studyDailySummarySchema.index({ dateKey: 1, userId: 1, courseId: 1 }, { unique: true });
+studyDailySummarySchema.index({ dateKey: 1, identityKey: 1, courseKey: 1 });
 studyDailySummarySchema.index({ userId: 1, dateKey: -1 });
 
 module.exports = mongoose.model('StudyDailySummary', studyDailySummarySchema);

@@ -26,6 +26,51 @@ const getTodayDateKey = () => {
   return new Date(now.getTime() - timezoneOffsetMs).toISOString().slice(0, 10);
 };
 
+const getLearnerKey = (row = {}) =>
+  row.identityKey || row.email || row.userId || row.name || 'learner';
+
+const getTopLearner = (rows = []) => {
+  if (!rows.length) return null;
+
+  const learners = new Map();
+  rows.forEach((row) => {
+    const learnerKey = getLearnerKey(row);
+    const existing = learners.get(learnerKey);
+    const courses = new Set(existing?.courseTitles || []);
+    if (row.courseTitle) courses.add(row.courseTitle);
+
+    const next = {
+      ...(existing || row),
+      ...row,
+      totalMinutes: (existing?.totalMinutes || 0) + (row.totalMinutes || 0),
+      totalSeconds: (existing?.totalSeconds || 0) + (row.totalSeconds || 0),
+      heartbeatCount: (existing?.heartbeatCount || 0) + (row.heartbeatCount || 0),
+      courseTitles: [...courses],
+    };
+
+    if (
+      existing?.lastTrackedAt &&
+      row.lastTrackedAt &&
+      new Date(existing.lastTrackedAt) > new Date(row.lastTrackedAt)
+    ) {
+      next.lastTrackedAt = existing.lastTrackedAt;
+      next.courseTitle = existing.courseTitle;
+      next.lastBatchLabel = existing.lastBatchLabel;
+      next.locationLabel = existing.locationLabel;
+    }
+
+    learners.set(learnerKey, next);
+  });
+
+  return [...learners.values()].sort((left, right) => right.totalMinutes - left.totalMinutes)[0];
+};
+
+const formatCourseList = (learner = {}) => {
+  const courses = learner.courseTitles || [];
+  if (courses.length <= 1) return learner.courseTitle || '-';
+  return `${courses[0]} +${courses.length - 1} more`;
+};
+
 const formatDateTime = (value) => {
   if (!value) return '-';
   return new Date(value).toLocaleString();
@@ -51,8 +96,7 @@ export default function DashboardPage() {
   };
 
   const topLearner = useMemo(() => {
-    if (!rows.length) return null;
-    return [...rows].sort((left, right) => right.totalMinutes - left.totalMinutes)[0];
+    return getTopLearner(rows);
   }, [rows]);
 
   const loadDashboard = async ({ silent = false } = {}) => {
@@ -248,7 +292,11 @@ export default function DashboardPage() {
               <dl>
                 <div>
                   <dt>Course</dt>
-                  <dd>{topLearner.courseTitle}</dd>
+                  <dd>{formatCourseList(topLearner)}</dd>
+                </div>
+                <div>
+                  <dt>Batch</dt>
+                  <dd>{topLearner.lastBatchLabel || '-'}</dd>
                 </div>
                 <div>
                   <dt>Minutes</dt>
@@ -281,6 +329,7 @@ export default function DashboardPage() {
                 <th>Name</th>
                 <th>Email</th>
                 <th>Course</th>
+                <th>Batch</th>
                 <th>Week</th>
                 <th>Last seen</th>
                 <th>Location</th>
@@ -289,10 +338,11 @@ export default function DashboardPage() {
             <tbody>
               {(liveSummary?.recentUsers || []).length ? (
                 liveSummary.recentUsers.map((user) => (
-                  <tr key={`${user.userId}-${user.courseId}`}>
+                  <tr key={`${user.identityKey || user.userId}-${user.courseId}`}>
                     <td>{user.name}</td>
                     <td>{user.email}</td>
                     <td>{user.courseTitle}</td>
+                    <td>{user.batchLabel || '-'}</td>
                     <td>{user.weekTitle || '-'}</td>
                     <td>{formatDateTime(user.lastTrackedAt)}</td>
                     <td>{user.locationLabel || '-'}</td>
@@ -300,7 +350,7 @@ export default function DashboardPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="empty-cell">
+                  <td colSpan={7} className="empty-cell">
                     No active users in the current live window.
                   </td>
                 </tr>
@@ -326,6 +376,7 @@ export default function DashboardPage() {
                 <th>Name</th>
                 <th>Email</th>
                 <th>Course</th>
+                <th>Batch</th>
                 <th>Minutes</th>
                 <th>Heartbeats</th>
                 <th>Last tracked</th>
@@ -335,10 +386,11 @@ export default function DashboardPage() {
             <tbody>
               {rows.length ? (
                 rows.map((row) => (
-                  <tr key={`${row.dateKey}-${row.userId}-${row.courseId}`}>
+                  <tr key={`${row.dateKey}-${row.identityKey || row.userId}-${row.courseKey || row.courseId}`}>
                     <td>{row.name}</td>
                     <td>{row.email}</td>
                     <td>{row.courseTitle}</td>
+                    <td>{row.lastBatchLabel || '-'}</td>
                     <td>{row.totalMinutes}</td>
                     <td>{row.heartbeatCount}</td>
                     <td>{formatDateTime(row.lastTrackedAt)}</td>
@@ -347,7 +399,7 @@ export default function DashboardPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="empty-cell">
+                  <td colSpan={8} className="empty-cell">
                     No data found for {dateKey}.
                   </td>
                 </tr>

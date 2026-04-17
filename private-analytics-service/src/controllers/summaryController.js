@@ -14,7 +14,14 @@ const getLearnerTodaySummary = async (req, res, next) => {
 
   try {
     const timezoneOffsetMinutes = Number.parseInt(req.query.timezoneOffsetMinutes, 10) || 0;
-    const summary = await getMyTodaySummary({ userId, timezoneOffsetMinutes });
+    const identityKey = String(req.header('x-identity-key') || '').trim();
+    const clientIdentityKey = String(req.query.clientIdentityKey || '').trim();
+    const summary = await getMyTodaySummary({
+      userId,
+      identityKey,
+      clientIdentityKey,
+      timezoneOffsetMinutes,
+    });
     res.status(200).json({
       success: true,
       data: summary,

@@ -8,6 +8,17 @@ const studyActivityEventSchema = new mongoose.Schema(
       unique: true,
       trim: true,
     },
+    identityKey: {
+      type: String,
+      trim: true,
+      default: '',
+      index: true,
+    },
+    clientIdentityKey: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     userId: {
       type: String,
       required: true,
@@ -29,6 +40,12 @@ const studyActivityEventSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: 'guest',
+    },
+    courseKey: {
+      type: String,
+      trim: true,
+      default: '',
+      index: true,
     },
     courseId: {
       type: String,
@@ -56,7 +73,17 @@ const studyActivityEventSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    batchLabel: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     routePath: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    ipAddress: {
       type: String,
       trim: true,
       default: '',
@@ -97,6 +124,7 @@ const studyActivityEventSchema = new mongoose.Schema(
 );
 
 studyActivityEventSchema.index({ userId: 1, trackedAt: -1 });
+studyActivityEventSchema.index({ identityKey: 1, trackedAt: -1 });
 studyActivityEventSchema.index({ courseId: 1, trackedAt: -1 });
 
 module.exports = mongoose.model('StudyActivityEvent', studyActivityEventSchema);

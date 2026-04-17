@@ -177,8 +177,8 @@ export const authAPI = {
   login: (data) => apiClient('/auth/login', { method: 'POST', body: data }),
   guestLogin: (guestCode) =>
     apiClient('/auth/guest', { method: 'POST', body: { guestCode } }),
-  googleLogin: (credential) =>
-    apiClient('/auth/google', { method: 'POST', body: { credential } }),
+  googleLogin: (credential, guestCode = '') =>
+    apiClient('/auth/google', { method: 'POST', body: { credential, guestCode } }),
   devLogin: (guestCode) =>
     apiClient('/auth/dev-login', { method: 'POST', body: { guestCode } }),
   logout: () => apiRequest('/auth/logout', { method: 'POST' }),
@@ -327,9 +327,12 @@ export const studyAnalyticsAPI = {
       method: 'POST',
       body: payload,
     }),
-  getMyTodaySummary: ({ timezoneOffsetMinutes = 0 } = {}) => {
+  getMyTodaySummary: ({ timezoneOffsetMinutes = 0, clientIdentityKey = '' } = {}) => {
     const params = new URLSearchParams();
     params.set('timezoneOffsetMinutes', `${timezoneOffsetMinutes}`);
+    if (clientIdentityKey) {
+      params.set('clientIdentityKey', clientIdentityKey);
+    }
     return apiRequest(`/study-analytics/me/today?${params.toString()}`);
   },
 };

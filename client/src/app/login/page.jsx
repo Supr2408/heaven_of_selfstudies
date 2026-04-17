@@ -63,7 +63,7 @@ export default function LoginPage() {
       setLoading(true);
 
       try {
-        const loginResponse = await authAPI.googleLogin(response.credential);
+        const loginResponse = await authAPI.googleLogin(response.credential, ensureGuestCode());
         completeLogin(loginResponse);
       } catch (err) {
         setError(err.message || 'Google sign-in failed');

@@ -10,6 +10,23 @@ const { getGlobalPresenceSnapshot } = require('../sockets/chat');
 const sanitizeText = (value = '', maxLength = 160) =>
   String(value || '').trim().slice(0, maxLength);
 
+const getClientIpAddress = (req) => {
+  const forwardedFor = sanitizeText(req.header('x-forwarded-for') || '', 500)
+    .split(',')
+    .map((item) => item.trim())
+    .find(Boolean);
+  const rawIp =
+    sanitizeText(req.header('cf-connecting-ip') || '', 80) ||
+    forwardedFor ||
+    sanitizeText(req.header('x-real-ip') || '', 80) ||
+    sanitizeText(req.ip || req.socket?.remoteAddress || '', 80);
+
+  return rawIp
+    .replace(/^::ffff:/, '')
+    .replace(/^\[|\]$/g, '')
+    .trim();
+};
+
 const assertInternalAnalyticsAccess = (req, next) => {
   const expectedSecret = String(process.env.PRIVATE_ANALYTICS_SHARED_SECRET || '').trim();
   const providedSecret = sanitizeText(req.header('x-analytics-shared-secret') || '', 200);
@@ -29,6 +46,8 @@ exports.trackStudyActivity = catchAsync(async (req, res, next) => {
     weekId = '',
     weekTitle = '',
     yearInstanceId = '',
+    batchLabel = '',
+    clientIdentityKey = '',
     durationSeconds = 30,
     timezoneOffsetMinutes = 0,
     routePath = '',
@@ -48,10 +67,13 @@ exports.trackStudyActivity = catchAsync(async (req, res, next) => {
       weekId: sanitizeText(weekId, 80),
       weekTitle: sanitizeText(weekTitle, 180),
       yearInstanceId: sanitizeText(yearInstanceId, 80),
+      batchLabel: sanitizeText(batchLabel, 80),
+      clientIdentityKey: sanitizeText(clientIdentityKey, 120),
       durationSeconds,
       timezoneOffsetMinutes,
       routePath: sanitizeText(routePath, 240),
       trackedAt,
+      ipAddress: getClientIpAddress(req),
     },
   });
 
@@ -63,9 +85,11 @@ exports.trackStudyActivity = catchAsync(async (req, res, next) => {
 
 exports.getMyTodaySummary = catchAsync(async (req, res) => {
   const timezoneOffsetMinutes = Number.parseInt(req.query.timezoneOffsetMinutes, 10) || 0;
+  const clientIdentityKey = sanitizeText(req.query.clientIdentityKey || '', 120);
   const summary = await getMyTodaySummary({
     user: req.user,
     timezoneOffsetMinutes,
+    clientIdentityKey,
   });
 
   res.status(200).json({

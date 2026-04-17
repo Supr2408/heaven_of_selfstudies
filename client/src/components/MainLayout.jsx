@@ -23,6 +23,7 @@ import useStore from '@/store/useStore';
 import { authAPI, studyAnalyticsAPI } from '@/lib/api';
 import {
   clearGuestSessionRequirement,
+  getClientIdentityKey,
   getPublicUserName,
   getRemainingGuestAccessMs,
   isGoogleSignInRequiredAfterGuest,
@@ -161,6 +162,7 @@ export default function MainLayout({ children }) {
       try {
         const response = await studyAnalyticsAPI.getMyTodaySummary({
           timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+          clientIdentityKey: getClientIdentityKey(),
         });
 
         if (!cancelled) {

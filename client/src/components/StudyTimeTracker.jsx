@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { studyAnalyticsAPI } from '@/lib/api';
+import { getClientIdentityKey } from '@/lib/user';
 
 const HEARTBEAT_MS = 15000;
 const INITIAL_HEARTBEAT_MS = 5000;
@@ -25,6 +26,7 @@ export default function StudyTimeTracker({
   weekId = '',
   weekTitle = '',
   yearInstanceId = '',
+  batchLabel = '',
   routePath = '',
 }) {
   const lastInteractionAtRef = useRef(0);
@@ -89,7 +91,9 @@ export default function StudyTimeTracker({
           weekId,
           weekTitle,
           yearInstanceId,
+          batchLabel,
           routePath,
+          clientIdentityKey: getClientIdentityKey(),
           durationSeconds,
           timezoneOffsetMinutes: new Date().getTimezoneOffset(),
           trackedAt: new Date(now).toISOString(),
@@ -143,7 +147,7 @@ export default function StudyTimeTracker({
       });
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [courseId, courseTitle, enabled, routePath, weekId, weekTitle, yearInstanceId]);
+  }, [batchLabel, courseId, courseTitle, enabled, routePath, weekId, weekTitle, yearInstanceId]);
 
   return null;
 }

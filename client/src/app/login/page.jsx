@@ -21,8 +21,9 @@ const SHOW_DEV_LOGIN = process.env.NODE_ENV !== 'production';
 export default function LoginPage() {
   const buttonRef = useRef(null);
   const router = useRouter();
-  const { authReady, isAuthenticated, initializeAuth, user } = useStore((state) => ({
+  const { authReady, currentTheme, isAuthenticated, initializeAuth, user } = useStore((state) => ({
     authReady: state.authReady,
+    currentTheme: state.currentTheme,
     isAuthenticated: state.isAuthenticated,
     initializeAuth: state.initializeAuth,
     user: state.user,
@@ -149,7 +150,13 @@ export default function LoginPage() {
         onReady={() => setScriptLoaded(true)}
       />
 
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.22),_transparent_45%),linear-gradient(135deg,_#eff6ff_0%,_#f8fafc_45%,_#e2e8f0_100%)] px-3 py-4 sm:px-4 sm:py-10">
+      <div
+        className={`min-h-screen px-3 py-4 sm:px-4 sm:py-10 ${
+          currentTheme === 'dark'
+            ? 'bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.16),_transparent_35%),linear-gradient(135deg,_#020617_0%,_#0f172a_45%,_#111827_100%)]'
+            : 'bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.22),_transparent_45%),linear-gradient(135deg,_#eff6ff_0%,_#f8fafc_45%,_#e2e8f0_100%)]'
+        }`}
+      >
         <div className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-5xl items-center justify-center sm:min-h-[calc(100vh-5rem)]">
           <div className="grid w-full overflow-hidden rounded-[2rem] border border-slate-200 bg-white/90 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.45)] backdrop-blur md:grid-cols-[1.15fr_0.85fr]">
             <div className="order-2 border-t border-slate-200 bg-slate-950 px-6 py-7 text-white md:order-1 md:border-t-0 md:border-b-0 md:border-r md:px-10 md:py-12">

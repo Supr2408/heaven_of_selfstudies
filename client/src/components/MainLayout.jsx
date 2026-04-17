@@ -19,6 +19,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import Sidebar from './Sidebar';
+import ThemeToggle from './ThemeToggle';
 import useStore from '@/store/useStore';
 import { authAPI, studyAnalyticsAPI } from '@/lib/api';
 import {
@@ -433,6 +434,8 @@ export default function MainLayout({ children }) {
             ) : null}
 
             <div className="flex items-center gap-2 sm:gap-4">
+              <ThemeToggle compact className="px-2.5 sm:px-3" />
+
               {store.isAuthenticated ? (
                 <div className="relative" ref={dropdownRef}>
                   <button

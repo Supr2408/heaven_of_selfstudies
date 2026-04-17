@@ -9,19 +9,46 @@ import { getPublicUserName } from '@/lib/user';
 import useStore from '@/store/useStore';
 import DashboardMissionPanel from '@/components/DashboardMissionPanel';
 
+const decodeHtmlEntities = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+};
+
 const getCourseId = (instance) =>
   typeof instance?.courseId === 'string' ? instance.courseId : instance?.courseId?._id;
 
 const getCourseTitle = (instance) =>
-  instance?.courseId?.title ||
-  instance?.courseId?.courseName ||
-  instance?.courseId?.name ||
-  'NPTEL Course';
+  decodeHtmlEntities(
+    instance?.courseId?.title || instance?.courseId?.courseName || instance?.courseId?.name || ''
+  ) || 'NPTEL Course';
 
 const getFirstOpenableWeek = (instance) => {
   const weeks = [...(instance?.weeks || [])].sort((a, b) => (a.weekNumber || 0) - (b.weekNumber || 0));
   return weeks.find((week) => (week?.materials || []).length > 0) || weeks[0] || null;
 };
+
+const getWeekTitle = (week) => {
+  if (!week) {
+    return 'Saved weeks ready';
+  }
+
+  return week?.title || (week?.weekNumber ? `Week ${week.weekNumber}` : 'Saved weeks ready');
+};
+
+const getInstanceMeta = (instance) =>
+  [instance?.year, instance?.semester, decodeHtmlEntities(instance?.courseId?.courseCode || '') || 'NPTEL run']
+    .filter(Boolean)
+    .join(' / ');
 
 export default function Dashboard() {
   const router = useRouter();
@@ -70,8 +97,8 @@ export default function Dashboard() {
 
   const continueInstance = orderedInstances[0] || null;
   const continueWeek = getFirstOpenableWeek(continueInstance);
-
-  const recentRuns = orderedInstances.slice(0, 6);
+  const recentRuns = orderedInstances.slice(0, 3);
+  const greetingName = learnerName || 'Learner';
 
   const openRun = (instance) => {
     const firstWeek = getFirstOpenableWeek(instance);
@@ -84,45 +111,73 @@ export default function Dashboard() {
     }
   };
 
+  const overviewStats = [
+    { label: 'Courses saved', value: courseCount },
+    { label: 'Runs ready', value: orderedInstances.length },
+    { label: 'Weeks available', value: totalWeeks },
+  ];
+
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
-      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="grid gap-0 lg:grid-cols-[1.45fr_0.85fr]">
-          <div className="bg-slate-50 px-6 py-8">
+    <div className="mx-auto max-w-6xl space-y-6">
+      <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)]">
+        <div className="grid gap-0 xl:grid-cols-[1.05fr_0.95fr]">
+          <div className="bg-slate-50 p-4 md:p-5">
             <DashboardMissionPanel />
           </div>
 
-          <div className="bg-gradient-to-br from-slate-900 via-blue-700 to-cyan-500 px-8 py-10 text-white">
-            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-blue-100">
-              Student Dashboard
-            </p>
-            <h1 className="mt-4 max-w-2xl text-4xl font-bold leading-tight">
-              Stay on track with your NPTEL community journey 
-              without hunting through menus.
-            </h1>
-            <p className="mt-4 max-w-xl text-sm leading-7 text-blue-50 md:text-base">
-              Open the latest run, jump straight into week-wise materials, and keep your library
-              ready for revision, practice, and exam-focused assignment support — built with
-              learners in the NPTEL community, for learners.
-            </p>
+          <div className="relative overflow-hidden bg-slate-950 px-6 py-8 text-white md:px-8 md:py-10">
+            <div className="pointer-events-none absolute inset-0">
+              <div className="absolute -right-24 top-8 h-56 w-56 rounded-full bg-cyan-400/25 blur-3xl" />
+              <div className="absolute left-0 top-1/2 h-40 w-40 -translate-y-1/2 rounded-full bg-blue-500/15 blur-3xl" />
+            </div>
 
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="relative">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                Student dashboard
+              </p>
+              <h1 className="mt-4 max-w-lg text-3xl font-semibold leading-tight md:text-4xl">
+                Stay focused on the next thing to study.
+              </h1>
+              <p className="mt-4 max-w-xl text-sm leading-7 text-slate-300 md:text-base">
+                Open your latest run, keep every saved week within reach, and make revision feel
+                lighter instead of crowded.
+              </p>
+
+              <div className="mt-7 grid gap-3 sm:grid-cols-3">
+                {overviewStats.map((stat) => (
+                  <div key={stat.label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{stat.label}</p>
+                    <p className="mt-3 text-3xl font-semibold text-white">{stat.value}</p>
+                  </div>
+                ))}
+              </div>
+
               {continueInstance ? (
-                <button
-                  onClick={() => openRun(continueInstance)}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-900 transition hover:bg-blue-50"
-                >
-                  Continue with {getCourseTitle(continueInstance)}
-                  <ArrowRight size={16} />
-                </button>
+                <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Ready to continue</p>
+                  <p className="mt-2 text-lg font-medium text-white">{getCourseTitle(continueInstance)}</p>
+                  <p className="mt-1 text-sm text-slate-300">{getWeekTitle(continueWeek)}</p>
+                </div>
               ) : null}
-              <Link
-                href="/courses"
-                className="inline-flex items-center gap-2 rounded-2xl border border-white/35 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-              >
-                <Search size={16} />
-                Browse community courses
-              </Link>
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                {continueInstance ? (
+                  <button
+                    onClick={() => openRun(continueInstance)}
+                    className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
+                  >
+                    Continue latest run
+                    <ArrowRight size={16} />
+                  </button>
+                ) : null}
+                <Link
+                  href="/courses"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-white/15 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                >
+                  <Search size={16} />
+                  Browse courses
+                </Link>
+              </div>
             </div>
           </div>
         </div>
@@ -134,89 +189,152 @@ export default function Dashboard() {
         </div>
       ) : null}
 
-      <section className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="rounded-2xl bg-blue-100 p-3 text-blue-600">
+      <section className="grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-start gap-4">
+            <div className="rounded-2xl bg-slate-100 p-3 text-slate-700">
               <BookOpen size={20} />
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
-                Continue Learning
+              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">
+                Continue learning
               </p>
-              <h2 className="text-3xl font-bold text-slate-900">Welcome back, {learnerName}</h2>
+              <h2 className="mt-2 text-3xl font-semibold leading-tight text-slate-950">
+                Welcome back, {greetingName}
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Your next study step is kept simple here so you can jump straight into revision.
+              </p>
             </div>
           </div>
 
           {continueInstance ? (
-            <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
-              <p className="text-2xl font-semibold text-slate-900">{getCourseTitle(continueInstance)}</p>
-              <p className="mt-1 text-sm text-slate-500">
-                {continueInstance?.year} • {continueInstance?.semester} • {continueInstance?.courseId?.courseCode || 'NPTEL run'}
+            <div className="mt-6 rounded-[1.75rem] border border-slate-200 bg-slate-50/80 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+                Latest run
               </p>
-              <p className="mt-4 text-sm text-slate-600">
+              <h3 className="mt-3 text-2xl font-semibold leading-tight text-slate-950">
+                {getCourseTitle(continueInstance)}
+              </h3>
+              <p className="mt-2 text-sm text-slate-500">{getInstanceMeta(continueInstance)}</p>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700">
+                  <Clock3 size={14} />
+                  {getWeekTitle(continueWeek)}
+                </div>
+                <div className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700">
+                  {continueInstance?.totalWeeks || 0} weeks saved
+                </div>
+              </div>
+
+              <p className="mt-4 text-sm leading-6 text-slate-600">
                 {continueWeek
-                  ? `Open ${continueWeek.title} and continue your revision from the latest available material.`
-                  : 'This batch is ready in your library. Open it to browse the available weeks.'}
+                  ? 'Start from the earliest week with material and move through your saved notes, assignments, and discussions without extra navigation.'
+                  : 'This run is ready in your library. Open it to browse the saved weeks and available materials.'}
               </p>
+
               <button
                 onClick={() => openRun(continueInstance)}
-                className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+                className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
               >
-                Open This Batch
+                Open this batch
                 <ArrowRight size={16} />
               </button>
             </div>
           ) : (
-            <div className="mt-6 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600">
-              Add your first course from the NPTEL search page and your study library will appear here.
+            <div className="mt-6 rounded-[1.75rem] border border-dashed border-slate-300 bg-slate-50 p-6 text-sm leading-6 text-slate-600">
+              Add your first course from the community search page and your study library will show
+              up here.
             </div>
           )}
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-start gap-4">
+            <div className="rounded-2xl bg-slate-100 p-3 text-slate-700">
+              <Library size={20} />
+            </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
-                Library Overview
+              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">
+                Library overview
               </p>
-              <h2 className="mt-1 text-2xl font-bold text-slate-900">Your study library, at a glance</h2>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-950">
+                Your study space, stripped down to what matters.
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                A quick read on your saved courses, active runs, and the next few batches you can
+                reopen.
+              </p>
             </div>
           </div>
 
-          <div className="mt-5 grid gap-3 md:grid-cols-3">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Courses in library
-              </p>
-              <p className="mt-3 text-3xl font-bold text-slate-900">{courseCount}</p>
-              <p className="mt-1 text-xs text-slate-500">Each course keeps its runs, weeks, and materials in one place.</p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Study runs ready
-              </p>
-              <p className="mt-3 text-3xl font-bold text-slate-900">{orderedInstances.length}</p>
-              <p className="mt-1 text-xs text-slate-500">Different batches you can open for week-wise revision.</p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Weeks available
-              </p>
-              <p className="mt-3 text-3xl font-bold text-slate-900">{totalWeeks}</p>
-              <p className="mt-1 text-xs text-slate-500">Every available week can link to previous-year assignments, notes, and discussions.</p>
-            </div>
+          <div className="mt-6 grid gap-3 md:grid-cols-3">
+            {overviewStats.map((stat) => (
+              <div key={stat.label} className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  {stat.label}
+                </p>
+                <p className="mt-3 text-3xl font-semibold text-slate-950">{stat.value}</p>
+              </div>
+            ))}
           </div>
 
-          <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-            <p className="font-semibold text-slate-900">How to use this space</p>
-            <ol className="mt-3 list-decimal space-y-2 pl-4">
-              <li>Pick a course from the left or add a new one from community search.</li>
-              <li>Open a batch and choose a week that matches your current pace.</li>
-              <li>Revise with solutions, discussions, and important questions for exams.</li>
-            </ol>
+          <div className="mt-6 rounded-[1.75rem] border border-slate-200 bg-slate-50/80 p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  Recent study runs
+                </p>
+                <p className="mt-2 text-sm text-slate-600">
+                  Reopen a saved batch without searching through the full library.
+                </p>
+              </div>
+              <Link
+                href="/courses"
+                className="hidden rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950 sm:inline-flex"
+              >
+                Add course
+              </Link>
+            </div>
+
+            {loading ? (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
+                Loading your saved runs...
+              </div>
+            ) : recentRuns.length ? (
+              <div className="mt-4 space-y-3">
+                {recentRuns.map((instance) => {
+                  const firstWeek = getFirstOpenableWeek(instance);
+
+                  return (
+                    <button
+                      key={instance._id}
+                      onClick={() => openRun(instance)}
+                      className="flex w-full items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left transition hover:border-slate-300 hover:bg-slate-50"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-900">
+                          {getCourseTitle(instance)}
+                        </p>
+                        <p className="mt-1 text-sm text-slate-500">{getInstanceMeta(instance)}</p>
+                        <p className="mt-2 text-xs uppercase tracking-[0.16em] text-slate-400">
+                          {getWeekTitle(firstWeek)}
+                        </p>
+                      </div>
+                      <span className="inline-flex shrink-0 items-center gap-2 text-sm font-medium text-slate-700">
+                        Open
+                        <ArrowRight size={16} />
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-4 text-sm leading-6 text-slate-600">
+                No saved runs yet. Browse the course library to start building a cleaner dashboard.
+              </div>
+            )}
           </div>
         </div>
       </section>

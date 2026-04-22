@@ -44,6 +44,9 @@ const sortInstancesDesc = (instances = []) =>
 const getLibraryInstanceIdSet = (user) =>
   new Set((user?.libraryYearInstances || []).map((id) => String(id)));
 
+const getCourseProfessorLabel = (course) =>
+  Array.isArray(course?.instructors) ? course.instructors.filter(Boolean).join(', ') : '';
+
 const buildHubCourseState = async (course, user) => {
   if (!course) {
     return null;
@@ -69,6 +72,8 @@ const buildHubCourseState = async (course, user) => {
     title: course.title,
     code: course.code,
     institute: course.institute || '',
+    instructors: course.instructors || [],
+    professor: getCourseProfessorLabel(course),
     subject: course.subjectId || null,
     importedRuns: instances.length,
     userHasCourse: userInstances.length > 0,
@@ -181,10 +186,15 @@ const dedupeCoursesByIdentity = async (courses = []) => {
       course.subjectId && typeof course.subjectId === 'object'
         ? course.subjectId._id?.toString?.() || course.subjectId.toString()
         : course.subjectId?.toString?.() || '';
-    const identityKey =
-      course.nptelLink ||
-      course.code ||
-      `${subjectId}:${(course.title || '').trim().toLowerCase()}:${(course.institute || '').trim().toLowerCase()}`;
+    const professorLabel = getCourseProfessorLabel(course);
+    const identityKey = [
+      subjectId,
+      (course.title || '').trim().toLowerCase(),
+      (course.institute || '').trim().toLowerCase(),
+      professorLabel.trim().toLowerCase(),
+    ]
+      .filter(Boolean)
+      .join(':') || course.nptelLink || course.code;
     const candidateScore = runCountMap.get(course._id.toString()) || 0;
     const current = picked.get(identityKey);
 
@@ -393,9 +403,19 @@ exports.getNptelCoursePreview = catchAsync(async (req, res) => {
   const importedCourse = await findBestImportedCourse({
     nptelLink: preview.courseUrl,
   });
-  if (importedCourse && preview.instituteName && importedCourse.institute !== preview.instituteName) {
-    importedCourse.institute = sanitizeInput(preview.instituteName);
-    await importedCourse.save();
+  if (importedCourse) {
+    let changed = false;
+    if (preview.instituteName && importedCourse.institute !== preview.instituteName) {
+      importedCourse.institute = sanitizeInput(preview.instituteName);
+      changed = true;
+    }
+    if (preview.professor && (!importedCourse.instructors || importedCourse.instructors.length === 0)) {
+      importedCourse.instructors = [sanitizeInput(preview.professor)];
+      changed = true;
+    }
+    if (changed) {
+      await importedCourse.save();
+    }
   }
 
   const hubCourse = await buildHubCourseState(importedCourse, req.user);

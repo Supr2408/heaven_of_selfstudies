@@ -44,16 +44,25 @@ const getCourseInstitute = (course, subject) => {
   return /iit|indian institute/i.test(subjectDescription) ? subjectDescription : '';
 };
 
-const getCourseIdentityKey = (course, subject) =>
-  [
-    course?._id,
-    course?.code,
-    course?.nptelLink,
-    normalizeSidebarLabel(getCourseInstitute(course, subject)),
+const getCourseProfessor = (course) => {
+  if (course?.professor) return course.professor;
+  if (Array.isArray(course?.instructors) && course.instructors.length) {
+    return course.instructors.filter(Boolean).join(', ');
+  }
+  return '';
+};
+
+const getCourseIdentityKey = (course, subject) => {
+  const visibleIdentity = [
     normalizeSidebarLabel(course?.title),
+    normalizeSidebarLabel(getCourseInstitute(course, subject)),
+    normalizeSidebarLabel(getCourseProfessor(course)),
   ]
     .filter(Boolean)
     .join('|');
+
+  return visibleIdentity || course?.nptelLink || course?.code || course?._id || '';
+};
 
 const dedupeCoursesByIdentity = (items = [], subject = null) => {
   const seen = new Set();
@@ -69,8 +78,10 @@ const dedupeCoursesByIdentity = (items = [], subject = null) => {
   });
 };
 
-const getCourseSubtitle = (course, subject) =>
-  getCourseInstitute(course, subject) || course?.code || '';
+const getCourseSubtitle = (course, subject) => {
+  const details = [getCourseInstitute(course, subject), getCourseProfessor(course)].filter(Boolean);
+  return details.length ? details.join(' - ') : course?.code || '';
+};
 
 export default function Sidebar() {
   const router = useRouter();

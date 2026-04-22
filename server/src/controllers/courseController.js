@@ -68,6 +68,7 @@ const buildHubCourseState = async (course, user) => {
     courseId: course._id,
     title: course.title,
     code: course.code,
+    institute: course.institute || '',
     subject: course.subjectId || null,
     importedRuns: instances.length,
     userHasCourse: userInstances.length > 0,
@@ -181,7 +182,9 @@ const dedupeCoursesByIdentity = async (courses = []) => {
         ? course.subjectId._id?.toString?.() || course.subjectId.toString()
         : course.subjectId?.toString?.() || '';
     const identityKey =
-      course.nptelLink || `${subjectId}:${(course.title || '').trim().toLowerCase()}`;
+      course.nptelLink ||
+      course.code ||
+      `${subjectId}:${(course.title || '').trim().toLowerCase()}:${(course.institute || '').trim().toLowerCase()}`;
     const candidateScore = runCountMap.get(course._id.toString()) || 0;
     const current = picked.get(identityKey);
 
@@ -390,6 +393,10 @@ exports.getNptelCoursePreview = catchAsync(async (req, res) => {
   const importedCourse = await findBestImportedCourse({
     nptelLink: preview.courseUrl,
   });
+  if (importedCourse && preview.instituteName && importedCourse.institute !== preview.instituteName) {
+    importedCourse.institute = sanitizeInput(preview.instituteName);
+    await importedCourse.save();
+  }
 
   const hubCourse = await buildHubCourseState(importedCourse, req.user);
 
@@ -406,7 +413,7 @@ exports.getNptelCoursePreview = catchAsync(async (req, res) => {
  * Create course
  */
 exports.createCourse = catchAsync(async (req, res, next) => {
-  const { subjectId, title, code, description, instructors, nptelLink, credits } = req.body;
+  const { subjectId, title, code, description, instructors, institute, nptelLink, credits } = req.body;
 
   if (!subjectId || !title || !code) {
     return next(new AppError('Please provide required fields', 400));
@@ -418,6 +425,7 @@ exports.createCourse = catchAsync(async (req, res, next) => {
     code: code.toUpperCase(),
     description: description ? sanitizeInput(description) : '',
     instructors: instructors || [],
+    institute: institute ? sanitizeInput(institute) : '',
     nptelLink: nptelLink || '',
     credits: credits || 3,
   });
@@ -434,7 +442,7 @@ exports.createCourse = catchAsync(async (req, res, next) => {
  */
 exports.updateCourse = catchAsync(async (req, res, next) => {
   const { id } = req.params;
-  const { title, description, instructors, nptelLink, credits } = req.body;
+  const { title, description, instructors, institute, nptelLink, credits } = req.body;
 
   let course = await Course.findById(id);
   if (!course) {
@@ -444,6 +452,7 @@ exports.updateCourse = catchAsync(async (req, res, next) => {
   if (title) course.title = sanitizeInput(title);
   if (description) course.description = sanitizeInput(description);
   if (instructors) course.instructors = instructors;
+  if (institute !== undefined) course.institute = institute ? sanitizeInput(institute) : '';
   if (nptelLink) course.nptelLink = nptelLink;
   if (credits) course.credits = credits;
 
@@ -502,6 +511,7 @@ exports.importNptelCourse = catchAsync(async (req, res, next) => {
     courseNumericId,
     courseUrl,
   });
+  const importedInstitute = sanitizeInput(imported.metadata?.institute || institute || '');
 
   // Subject
   const subjectSlug = slugify(imported.subject.slug || imported.subject.name);
@@ -513,14 +523,14 @@ exports.importNptelCourse = catchAsync(async (req, res, next) => {
     subject = await Subject.create({
       name: importedSubjectName,
       slug: subjectSlug,
-      description: institute ? sanitizeInput(institute) : '',
+      description: importedInstitute || (institute ? sanitizeInput(institute) : ''),
       icon: '📘',
     });
   } else if (isGenericTitle(subject.name)) {
     // Upgrade generic subject to real name/slug based on imported data
     subject.name = importedSubjectName;
     subject.slug = subjectSlug;
-    subject.description = institute ? sanitizeInput(institute) : subject.description;
+    subject.description = importedInstitute || (institute ? sanitizeInput(institute) : subject.description);
     await subject.save();
   }
 
@@ -536,6 +546,7 @@ exports.importNptelCourse = catchAsync(async (req, res, next) => {
       code: imported.course.code.toUpperCase(),
       description: sanitizeInput(imported.course.description || ''),
       instructors: imported.course.instructors || [],
+      institute: importedInstitute,
       nptelLink: imported.course.nptelLink || '',
       credits: 3,
     });
@@ -552,6 +563,10 @@ exports.importNptelCourse = catchAsync(async (req, res, next) => {
     }
     if ((!course.instructors || course.instructors.length === 0) && imported.course.instructors?.length) {
       course.instructors = imported.course.instructors;
+      changed = true;
+    }
+    if (importedInstitute && course.institute !== importedInstitute) {
+      course.institute = importedInstitute;
       changed = true;
     }
     if (!course.nptelLink && imported.course.nptelLink) {

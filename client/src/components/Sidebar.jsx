@@ -36,6 +36,42 @@ const dedupeByLabel = (items = [], getLabel = () => '') => {
   });
 };
 
+const getCourseInstitute = (course, subject) => {
+  const directInstitute = course?.institute || course?.instituteName || '';
+  if (directInstitute) return directInstitute;
+
+  const subjectDescription = subject?.description || course?.subjectId?.description || '';
+  return /iit|indian institute/i.test(subjectDescription) ? subjectDescription : '';
+};
+
+const getCourseIdentityKey = (course, subject) =>
+  [
+    course?._id,
+    course?.code,
+    course?.nptelLink,
+    normalizeSidebarLabel(getCourseInstitute(course, subject)),
+    normalizeSidebarLabel(course?.title),
+  ]
+    .filter(Boolean)
+    .join('|');
+
+const dedupeCoursesByIdentity = (items = [], subject = null) => {
+  const seen = new Set();
+
+  return (Array.isArray(items) ? items : []).filter((course) => {
+    const key = getCourseIdentityKey(course, subject);
+    if (!key || seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+};
+
+const getCourseSubtitle = (course, subject) =>
+  getCourseInstitute(course, subject) || course?.code || '';
+
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
@@ -143,9 +179,9 @@ export default function Sidebar() {
 
     try {
       setLoading(true);
-      const loadedCourses = dedupeByLabel(
+      const loadedCourses = dedupeCoursesByIdentity(
         await loadCoursesForSubject(subject._id),
-        (course) => course?.title
+        subject
       );
       const matchingCourse =
         loadedCourses.find(
@@ -376,15 +412,10 @@ export default function Sidebar() {
         ) : null}
 
         {subjects.map((subject) => {
-          const subjectCourses = dedupeByLabel(
+          const subjectCourses = dedupeCoursesByIdentity(
             coursesBySubject[subject._id] || [],
-            (course) => course?.title
+            subject
           );
-          const matchingCourseId =
-            subjectCourses.find(
-              (course) =>
-                normalizeSidebarLabel(course?.title) === normalizeSidebarLabel(subject?.name)
-            )?._id || '';
 
           return (
             <div key={subject._id}>
@@ -416,27 +447,32 @@ export default function Sidebar() {
                   ) : (
                     subjectCourses.map((course) => {
                       const courseInstances = instancesByCourse[course._id] || [];
-                      const hideCourseEntry = course._id === matchingCourseId;
+                      const courseSubtitle = getCourseSubtitle(course, subject);
 
                       return (
                         <div key={course._id}>
-                          {hideCourseEntry ? null : (
-                            <button
-                              onClick={() => handleCourseClick(course, subject)}
-                              className="flex w-full items-center justify-between rounded px-3 py-1.5 text-xs transition-colors hover:bg-slate-700"
-                            >
-                              <span className="truncate">{course.title}</span>
-                              <ChevronDown
-                                size={14}
-                                className={`flex-shrink-0 transition-transform ${
-                                  expandedCourse === course._id ? 'rotate-180' : ''
-                                }`}
-                              />
-                            </button>
-                          )}
+                          <button
+                            onClick={() => handleCourseClick(course, subject)}
+                            className="flex w-full items-center justify-between gap-2 rounded px-3 py-1.5 text-xs transition-colors hover:bg-slate-700"
+                          >
+                            <span className="min-w-0 flex-1 text-left">
+                              <span className="block truncate font-medium">{course.title}</span>
+                              {courseSubtitle ? (
+                                <span className="block truncate text-[10px] text-slate-400">
+                                  {courseSubtitle}
+                                </span>
+                              ) : null}
+                            </span>
+                            <ChevronDown
+                              size={14}
+                              className={`flex-shrink-0 transition-transform ${
+                                expandedCourse === course._id ? 'rotate-180' : ''
+                              }`}
+                            />
+                          </button>
 
-                          {expandedCourse === course._id || hideCourseEntry ? (
-                            <div className={`${hideCourseEntry ? 'mt-1' : 'ml-3 mt-1 border-l border-slate-800 pl-2'} space-y-1`}>
+                          {expandedCourse === course._id ? (
+                            <div className="ml-3 mt-1 space-y-1 border-l border-slate-800 pl-2">
                               <button
                                 onClick={() => handleCourseDiscussionSelect(course, subject)}
                                 className={`flex w-full items-center justify-between rounded px-3 py-2 text-left text-xs transition-colors ${

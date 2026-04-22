@@ -27,6 +27,11 @@ const courseSchema = new mongoose.Schema(
         type: String,
       },
     ],
+    institute: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     nptelLink: {
       type: String,
       match: [/^(https?:\/\/)?(www\.)?nptel\.ac\.in.*$|^$/, 'Please provide valid NPTEL link'],
